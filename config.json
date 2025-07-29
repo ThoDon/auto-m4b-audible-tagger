@@ -1,0 +1,9 @@
+{
+  "preferred_locale": "fr",
+  "embed_covers": true,
+  "include_series_in_filename": true,
+  "create_additional_metadata": true,
+  "exclude_translators": true,
+  "output_single_author": false,
+  "log_level": "WARNING"
+}

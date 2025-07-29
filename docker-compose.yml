@@ -1,0 +1,55 @@
+services:
+  # API Server (server version)
+  auto-m4b-audible-tagger-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: auto-m4b-audible-tagger:latest
+    container_name: auto-m4b-audible-tagger-server
+    pull_policy: build
+    ports:
+      - "3005:5000"
+    volumes:
+      - ${INCOMING_PATH:-./incoming}:/app/incoming
+      - ${LIBRARY_PATH:-./library}:/app/library
+      - ${SKIPPED_PATH:-./skipped}:/app/skipped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      # Set Python to run in unbuffered mode for better logging
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=production
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    command: ["python", "scripts/api_server.py", "/app/incoming", "/app/library", "--host", "0.0.0.0", "--port", "5000"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - audiobook-network
+
+  # Telegram Bot (telegram addon)
+  auto-m4b-audible-tagger-telegram:
+    image: auto-m4b-audible-tagger:latest
+    container_name: auto-m4b-audible-tagger-telegram
+    pull_policy: build
+    depends_on:
+      auto-m4b-audible-tagger-server:
+        condition: service_healthy
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - API_SERVER_URL=http://auto-m4b-audible-tagger-server:5000
+      - N8N_NEW_RELEASES_WEBHOOK_URL=${N8N_NEW_RELEASES_WEBHOOK_URL}
+      - BOT_LANGUAGE=${BOT_LANGUAGE:-en}
+    command: ["python", "scripts/telegram_bot.py", "--api-url", "http://auto-m4b-audible-tagger-server:5000", "--token", "${TELEGRAM_BOT_TOKEN}"]
+    restart: unless-stopped
+    networks:
+      - audiobook-network
+
+networks:
+  audiobook-network:
+    driver: bridge
+    name: auto-m4b-audible-tagger-network
