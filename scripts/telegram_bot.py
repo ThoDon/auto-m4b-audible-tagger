@@ -6,11 +6,9 @@ Handles interactive commands for processing audiobooks via Telegram
 
 import os
 import sys
-import json
 import logging
 import requests
 import traceback
-import asyncio
 from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
@@ -139,7 +137,7 @@ class AudiobookTelegramBot:
     
 
     
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def start_command(self, update: Update):
         """Handle /start command"""
         # Set up bot commands on first start
         try:

@@ -739,6 +739,7 @@ class AudibleTagger:
     
     def tag_file(self, file_path: Path, metadata: Dict, cover_path: Optional[str] = None) -> bool:
         """Tag the .m4b file with comprehensive metadata using mutagen"""
+        backup_path = None
         try:
             # Remove verbose metadata logging
             
@@ -756,10 +757,25 @@ class AudibleTagger:
                 self.logger.warning(f"Could not create backup: {e}")
             
             # Tag with mutagen
-            return self.tag_with_mutagen(file_path, metadata, cover_path)
+            success = self.tag_with_mutagen(file_path, metadata, cover_path)
+            
+            # Remove backup if tagging was successful
+            if success and backup_path and backup_path.exists():
+                try:
+                    backup_path.unlink()
+                except Exception as e:
+                    self.logger.warning(f"Could not remove backup file {backup_path}: {e}")
+            
+            return success
                 
         except Exception as e:
             self.logger.error(f"Error tagging file {file_path}: {e}")
+            # Remove backup on error as well
+            if backup_path and backup_path.exists():
+                try:
+                    backup_path.unlink()
+                except Exception as backup_error:
+                    self.logger.warning(f"Could not remove backup file {backup_path}: {backup_error}")
             return False
     
     def _build_basic_tags(self, metadata: Dict) -> Dict:
