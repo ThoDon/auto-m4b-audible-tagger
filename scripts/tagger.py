@@ -813,25 +813,25 @@ class AudibleTagger:
         tags = {}
         
         if metadata.get("asin"):
-            tags[TagConstants.ASIN] = metadata["asin"]
+            tags[TagConstants.ASIN] = self._ensure_string(metadata["asin"])
         
         if metadata.get("isbn"):
-            tags[TagConstants.ISBN] = metadata["isbn"]
+            tags[TagConstants.ISBN] = self._ensure_string(metadata["isbn"])
         
         if metadata.get("language"):
-            tags[TagConstants.LANGUAGE] = metadata["language"]
+            tags[TagConstants.LANGUAGE] = self._ensure_string(metadata["language"])
         
         if metadata.get("format_type"):
-            tags[TagConstants.FORMAT] = metadata["format_type"]
+            tags[TagConstants.FORMAT] = self._ensure_string(metadata["format_type"])
         
         if metadata.get("publisher_name"):
-            tags[TagConstants.PUBLISHER] = metadata["publisher_name"]
+            tags[TagConstants.PUBLISHER] = self._ensure_string(metadata["publisher_name"])
         
         if metadata.get("subtitle"):
-            tags[TagConstants.SUBTITLE] = metadata["subtitle"]
+            tags[TagConstants.SUBTITLE] = self._ensure_string(metadata["subtitle"])
         
         if metadata.get("release_time"):
-            tags[TagConstants.RELEASETIME] = metadata["release_time"]
+            tags[TagConstants.RELEASETIME] = self._ensure_string(metadata["release_time"])
         
         return tags
     
@@ -927,8 +927,8 @@ class AudibleTagger:
             series_count = 1  # Simplified for now, could be enhanced to count multiple series
         
         if series_count > 0:
-            series_name = metadata.get('series', '')
-            series_part = metadata.get('series_part', '')
+            series_name = self._ensure_string(metadata.get('series', ''))
+            series_part = self._ensure_string(metadata.get('series_part', ''))
             
             # Set SHOWMOVEMENT to 1 if series exists
             tags[TagConstants.SHOWMOVEMENT] = '1'  # SHOWMOVEMENT
@@ -1089,15 +1089,15 @@ class AudibleTagger:
                 current_artist = str(current_artist)
             
             if current_artist:
-                tags['\xa9ART'] = f"{current_artist}, {metadata['narrator']}"
+                tags['\xa9ART'] = f"{current_artist}, {self._ensure_string(metadata['narrator'])}"
             else:
-                tags['\xa9ART'] = metadata['narrator']
+                tags['\xa9ART'] = self._ensure_string(metadata['narrator'])
         
         # Set MOVEMENTNAME and MOVEMENT tags (these are set in Audible API.inc)
         if metadata.get('series'):
-            tags[TagConstants.MOVEMENTNAME] = metadata['series']  # MOVEMENTNAME = SERIES
+            tags[TagConstants.MOVEMENTNAME] = self._ensure_string(metadata['series'])  # MOVEMENTNAME = SERIES
             if metadata.get('series_part'):
-                tags[TagConstants.MOVEMENT] = metadata['series_part']  # MOVEMENT = SERIES-PART
+                tags[TagConstants.MOVEMENT] = self._ensure_string(metadata['series_part'])  # MOVEMENT = SERIES-PART
         
         return tags
     
@@ -1126,27 +1126,35 @@ class AudibleTagger:
             tags.update(self._build_compatibility_tags(metadata))
             tags.update(self._build_missing_audible_api_tags(metadata, tags))
             
+            # Debug: Print tags before applying
+            self.logger.debug(f"Built tags: {tags}")
+            
             # Apply all tags - ensure proper format for mutagen
             for key, value in tags.items():
-                # Ensure value is a string before encoding
-                if isinstance(value, bytes):
-                    # If it's already bytes, decode to string first to ensure proper encoding
-                    try:
-                        value = value.decode('utf-8', errors='replace')
-                    except UnicodeDecodeError:
-                        # If decoding fails, convert to string representation
-                        value = str(value)
-                elif not isinstance(value, str):
-                    # Convert other types to string
-                    value = str(value)
-                
-                # Now encode the string value
                 try:
-                    audio.tags[key] = [value.encode('utf-8')]
-                except UnicodeEncodeError as e:
-                    self.logger.warning(f"Failed to encode tag {key}: {e}")
-                    # Fallback to ASCII encoding with replacement
-                    audio.tags[key] = [value.encode('ascii', errors='replace')]
+                    # Ensure value is a string before encoding
+                    if isinstance(value, bytes):
+                        # If it's already bytes, decode to string first to ensure proper encoding
+                        try:
+                            value = value.decode('utf-8', errors='replace')
+                        except UnicodeDecodeError:
+                            # If decoding fails, convert to string representation
+                            value = str(value)
+                    elif not isinstance(value, str):
+                        # Convert other types to string
+                        value = str(value)
+                    
+                    # Now encode the string value
+                    try:
+                        audio.tags[key] = [value.encode('utf-8')]
+                    except UnicodeEncodeError as e:
+                        self.logger.warning(f"Failed to encode tag {key}: {e}")
+                        # Fallback to ASCII encoding with replacement
+                        audio.tags[key] = [value.encode('ascii', errors='replace')]
+                except Exception as tag_error:
+                    self.logger.error(f"Error applying tag {key} with value {value}: {tag_error}")
+                    # Continue with other tags instead of failing completely
+                    continue
             
             # Add cover art if available
             if cover_path and self.config.get('embed_covers', True):
@@ -1173,6 +1181,8 @@ class AudibleTagger:
                 
         except Exception as e:
             self.logger.error(f"Error with mutagen tagging: {e}")
+            import traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
     
     def verify_mutagen_tags(self, file_path: Path, expected_metadata: Dict) -> bool:
@@ -1512,6 +1522,7 @@ class AudibleTagger:
             # Get detailed book information
             details = self.get_book_details(selected_result['asin'], selected_result.get('locale', 'com'))
             if not details:
+                self.logger.error(f"Failed to get book details for ASIN: {selected_result['asin']}")
                 return False
             
             # Download cover
@@ -1530,10 +1541,13 @@ class AudibleTagger:
                 
                 return True
             else:
+                self.logger.error(f"Failed to tag file: {file_path}")
                 return False
                 
         except Exception as e:
             self.logger.error(f"Error in core processing for {file_path}: {e}")
+            import traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
     
     def process_file_programmatic(self, file_path: Path, asin: str, locale: str = 'com') -> bool:
