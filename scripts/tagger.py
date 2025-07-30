@@ -184,6 +184,18 @@ class AudibleTagger:
         
         return '. '.join(cleaned_sentences)
     
+    def _ensure_string(self, value) -> str:
+        """Ensure a value is a string, handling bytes and other types safely"""
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, bytes):
+            try:
+                return value.decode('utf-8', errors='replace')
+            except UnicodeDecodeError:
+                return str(value)
+        else:
+            return str(value)
+    
     def create_additional_metadata_files(self, dest_dir: Path, metadata: Dict, cover_path: Optional[str] = None) -> None:
         """Create additional metadata files compatible with Audiobookshelf"""
         # Check if additional metadata creation is enabled
@@ -801,25 +813,25 @@ class AudibleTagger:
         tags = {}
         
         if metadata.get("asin"):
-            tags[TagConstants.ASIN] = metadata["asin"].encode('utf-8')
+            tags[TagConstants.ASIN] = metadata["asin"]
         
         if metadata.get("isbn"):
-            tags[TagConstants.ISBN] = metadata["isbn"].encode('utf-8')
+            tags[TagConstants.ISBN] = metadata["isbn"]
         
         if metadata.get("language"):
-            tags[TagConstants.LANGUAGE] = metadata["language"].encode('utf-8')
+            tags[TagConstants.LANGUAGE] = metadata["language"]
         
         if metadata.get("format_type"):
-            tags[TagConstants.FORMAT] = metadata["format_type"].encode('utf-8')
+            tags[TagConstants.FORMAT] = metadata["format_type"]
         
         if metadata.get("publisher_name"):
-            tags[TagConstants.PUBLISHER] = metadata["publisher_name"].encode('utf-8')
+            tags[TagConstants.PUBLISHER] = metadata["publisher_name"]
         
         if metadata.get("subtitle"):
-            tags[TagConstants.SUBTITLE] = metadata["subtitle"].encode('utf-8')
+            tags[TagConstants.SUBTITLE] = metadata["subtitle"]
         
         if metadata.get("release_time"):
-            tags[TagConstants.RELEASETIME] = metadata["release_time"].encode('utf-8')
+            tags[TagConstants.RELEASETIME] = metadata["release_time"]
         
         return tags
     
@@ -831,37 +843,33 @@ class AudibleTagger:
         single_album_artist = self.config.get('add_single_album_artist_only', True)
         
         if metadata.get('authors'):
-            # Count authors with ASIN (exclude translators)
-            author_count = 0
-            for author in metadata['authors']:
-                if author.get('asin'):  # Only count authors with ASIN
-                    author_count += 1
-            
-            if author_count > 1 and single_album_artist:
-                # Multiple authors - set ALBUMARTISTS for all, ALBUMARTIST for first only
-                all_authors = []
-                first_author = None
-                for author in metadata['authors']:
-                    if author.get('asin'):
-                        author_name = author.get('name', '').strip()
-                        if author_name:
-                            all_authors.append(author_name)
-                            if first_author is None:
-                                first_author = author_name
-                
-                if all_authors:
-                    tags['\xa9ART'] = ', '.join(all_authors)  # ARTIST (all authors)
-                    tags['aART'] = first_author  # ALBUMARTIST (first author only)
-                    tags[TagConstants.ALBUMARTISTS] = ', '.join(all_authors).encode('utf-8')  # ALBUMARTISTS (all authors)
+            # Handle both list of strings and list of dictionaries
+            if isinstance(metadata['authors'][0], str):
+                # List of strings (author names)
+                author_names = [name.strip() for name in metadata['authors'] if name.strip()]
+                author_count = len(author_names)
             else:
-                # Single author or multiple authors without single album artist setting
+                # List of dictionaries (original format)
+                author_count = 0
+                for author in metadata['authors']:
+                    if author.get('asin'):  # Only count authors with ASIN
+                        author_count += 1
+                
                 author_names = []
                 for author in metadata['authors']:
                     if author.get('asin'):
                         author_name = author.get('name', '').strip()
                         if author_name:
                             author_names.append(author_name)
-                
+            
+            if author_count > 1 and single_album_artist:
+                # Multiple authors - set ALBUMARTISTS for all, ALBUMARTIST for first only
+                if author_names:
+                    tags['\xa9ART'] = ', '.join(author_names)  # ARTIST (all authors)
+                    tags['aART'] = author_names[0]  # ALBUMARTIST (first author only)
+                    tags[TagConstants.ALBUMARTISTS] = ', '.join(author_names)  # ALBUMARTISTS (all authors)
+            else:
+                # Single author or multiple authors without single album artist setting
                 if author_names:
                     author_list = ', '.join(author_names)
                     tags['\xa9ART'] = author_list  # ARTIST
@@ -873,9 +881,10 @@ class AudibleTagger:
         
         # Set ARTIST tag based on single album artist setting (Audible API.inc logic)
         if single_album_artist and TagConstants.ALBUMARTISTS in tags:
-            tags['\xa9ART'] = tags[TagConstants.ALBUMARTISTS].decode('utf-8')  # ARTIST = ALBUMARTISTS
-        else:
-            tags['\xa9ART'] = tags.get('aART', '')  # ARTIST = ALBUMARTIST
+            tags['\xa9ART'] = tags[TagConstants.ALBUMARTISTS]  # ARTIST = ALBUMARTISTS
+        elif 'aART' in tags:
+            tags['\xa9ART'] = tags['aART']  # ARTIST = ALBUMARTIST
+        # If neither condition is met, \xa9ART is already set above or will remain unset
         
         return tags
     
@@ -886,10 +895,16 @@ class AudibleTagger:
         # Build narrator list from narrators array
         if metadata.get('narrators'):
             narrator_names = []
-            for narrator in metadata['narrators']:
-                narrator_name = narrator.get('name', '').strip()
-                if narrator_name:
-                    narrator_names.append(narrator_name)
+            # Handle both list of strings and list of dictionaries
+            if isinstance(metadata['narrators'][0], str):
+                # List of strings (narrator names)
+                narrator_names = [name.strip() for name in metadata['narrators'] if name.strip()]
+            else:
+                # List of dictionaries (original format)
+                for narrator in metadata['narrators']:
+                    narrator_name = narrator.get('name', '').strip()
+                    if narrator_name:
+                        narrator_names.append(narrator_name)
             
             if narrator_names:
                 tags['\xa9wrt'] = ', '.join(narrator_names)  # COMPOSER (Narrator)
@@ -897,13 +912,8 @@ class AudibleTagger:
             # Fallback to single narrator field
             tags['\xa9wrt'] = metadata['narrator']  # COMPOSER (Narrator)
         
-        # Add narrator to artist if configured (Mp3tag setting)
-        if metadata.get('narrator') and self.config.get('add_narrator_to_artist', False):
-            current_artist = tags.get('\xa9ART', '')
-            if current_artist:
-                tags['\xa9ART'] = f"{current_artist}, {metadata['narrator']}"
-            else:
-                tags['\xa9ART'] = metadata['narrator']
+        # Note: Narrator to artist logic is handled in _build_missing_audible_api_tags
+        # to ensure proper access to the accumulated tags dictionary
         
         return tags
     
@@ -921,23 +931,23 @@ class AudibleTagger:
             series_part = metadata.get('series_part', '')
             
             # Set SHOWMOVEMENT to 1 if series exists
-            tags[TagConstants.SHOWMOVEMENT] = b'1'  # SHOWMOVEMENT
-            tags[TagConstants.SHOW_MOVEMENT_ALT] = b'1'  # Alternative show movement tag
+            tags[TagConstants.SHOWMOVEMENT] = '1'  # SHOWMOVEMENT
+            tags[TagConstants.SHOW_MOVEMENT_ALT] = '1'  # Alternative show movement tag
             
             # Set series tags
             if series_name:
-                tags[TagConstants.SERIES] = series_name.encode('utf-8')  # SERIES
-                tags[TagConstants.MOVEMENTNAME] = series_name.encode('utf-8')  # MOVEMENTNAME
+                tags[TagConstants.SERIES] = series_name  # SERIES
+                tags[TagConstants.MOVEMENTNAME] = series_name  # MOVEMENTNAME
                 
                 if series_part:
                     # Series with part number
                     content_group = f"{series_name}, Book #{series_part}"
-                    tags[TagConstants.CONTENTGROUP] = content_group.encode('utf-8')  # CONTENTGROUP
-                    tags[TagConstants.SERIES_PART] = series_part.encode('utf-8')  # SERIES-PART
-                    tags[TagConstants.MOVEMENT] = series_part.encode('utf-8')  # MOVEMENT
+                    tags[TagConstants.CONTENTGROUP] = content_group  # CONTENTGROUP
+                    tags[TagConstants.SERIES_PART] = series_part  # SERIES-PART
+                    tags[TagConstants.MOVEMENT] = series_part  # MOVEMENT
                 else:
                     # Series without part number
-                    tags[TagConstants.CONTENTGROUP] = series_name.encode('utf-8')  # CONTENTGROUP
+                    tags[TagConstants.CONTENTGROUP] = series_name  # CONTENTGROUP
         
         return tags
     
@@ -947,7 +957,7 @@ class AudibleTagger:
         
         if metadata.get('description'):
             tags[TagConstants.COMMENT] = metadata['description']  # COMMENT (Publisher's Summary for MP3)
-            tags[TagConstants.DESCRIPTION] = metadata['description'].encode('utf-8')  # DESCRIPTION (Publisher's Summary for M4B)
+            tags[TagConstants.DESCRIPTION] = metadata['description']  # DESCRIPTION (Publisher's Summary for M4B)
             tags[TagConstants.DESC_ALT] = metadata['description']  # Alternative description tag
             tags[TagConstants.DESC_ALT2] = metadata['description']  # Alternative description tag
         
@@ -964,9 +974,9 @@ class AudibleTagger:
                 # Single genre mode - first genre in GENRE, others in TMP_GENRE1, TMP_GENRE2
                 tags[TagConstants.GENRE] = metadata['genres'][0]  # GENRE (first genre only)
                 if len(metadata['genres']) > 1:
-                    tags[TagConstants.TMP_GENRE1] = metadata['genres'][1].encode('utf-8')  # TMP_GENRE1
+                    tags[TagConstants.TMP_GENRE1] = metadata['genres'][1]  # TMP_GENRE1
                 if len(metadata['genres']) > 2:
-                    tags[TagConstants.TMP_GENRE2] = metadata['genres'][2].encode('utf-8')  # TMP_GENRE2
+                    tags[TagConstants.TMP_GENRE2] = metadata['genres'][2]  # TMP_GENRE2
             else:
                 # Multiple genres with delimiter
                 delimiter = self.config.get('genre_delimiter', '/')
@@ -979,8 +989,8 @@ class AudibleTagger:
         tags = {}
         
         if metadata.get('rating'):
-            tags[TagConstants.RATING] = metadata['rating'].encode('utf-8')  # RATING (Audible Rating)
-            tags[TagConstants.RATING_WMP] = metadata['rating'].encode('utf-8')  # RATING WMP (Audible Rating for MP3)
+            tags[TagConstants.RATING] = metadata['rating']  # RATING (Audible Rating)
+            tags[TagConstants.RATING_WMP] = metadata['rating']  # RATING WMP (Audible Rating for MP3)
         
         return tags
     
@@ -989,11 +999,11 @@ class AudibleTagger:
         tags = {}
         
         if metadata.get('is_adult_product'):
-            tags[TagConstants.EXPLICIT] = b'1'  # EXPLICIT (Set to 1 if adult content)
-            tags[TagConstants.ITUNESADVISORY] = b'1'  # ITUNESADVISORY (Set to 1 if adult content for M4B)
+            tags[TagConstants.EXPLICIT] = '1'  # EXPLICIT (Set to 1 if adult content)
+            tags[TagConstants.ITUNESADVISORY] = '1'  # ITUNESADVISORY (Set to 1 if adult content for M4B)
         else:
-            tags[TagConstants.EXPLICIT] = b'0'  # EXPLICIT (Set to 0 if clean)
-            tags[TagConstants.ITUNESADVISORY] = b'2'  # ITUNESADVISORY (Set to 2 if clean for M4B)
+            tags[TagConstants.EXPLICIT] = '0'  # EXPLICIT (Set to 0 if clean)
+            tags[TagConstants.ITUNESADVISORY] = '2'  # ITUNESADVISORY (Set to 2 if clean for M4B)
         
         return tags
     
@@ -1001,10 +1011,10 @@ class AudibleTagger:
         """Build iTunes specific tags"""
         tags = {}
         
-        tags[TagConstants.ITUNESGAPLESS] = b'1'  # ITUNESGAPLESS (M4B Gapless album = 1)
-        tags[TagConstants.ITUNESMEDIATYPE] = b'Audiobook'  # ITUNESMEDIATYPE (M4B Media type = Audiobook)
-        tags[TagConstants.GAPLESS_ALT] = b'True'  # Alternative gapless tag
-        tags[TagConstants.STICK] = b'2'     # Audiobook stick
+        tags[TagConstants.ITUNESGAPLESS] = '1'  # ITUNESGAPLESS (M4B Gapless album = 1)
+        tags[TagConstants.ITUNESMEDIATYPE] = 'Audiobook'  # ITUNESMEDIATYPE (M4B Media type = Audiobook)
+        tags[TagConstants.GAPLESS_ALT] = 'True'  # Alternative gapless tag
+        tags[TagConstants.STICK] = '2'     # Audiobook stick
         
         return tags
     
@@ -1015,9 +1025,9 @@ class AudibleTagger:
         if metadata.get('asin'):
             locale = self.config.get('preferred_locale', 'com')
             audible_url = f"https://www.audible.{locale}/pd/{metadata['asin']}"
-            tags[TagConstants.WWWAUDIOFILE] = audible_url.encode('utf-8')  # WWWAUDIOFILE (Audible Album URL)
-            tags[TagConstants.ASIN] = metadata['asin'].encode('utf-8')  # ASIN (Amazon Standard Identification Number)
-            tags[TagConstants.AUDIBLE_ASIN] = metadata['asin'].encode('utf-8')  # Additional ASIN tag
+            tags[TagConstants.WWWAUDIOFILE] = audible_url  # WWWAUDIOFILE (Audible Album URL)
+            tags[TagConstants.ASIN] = metadata['asin']  # ASIN (Amazon Standard Identification Number)
+            tags[TagConstants.AUDIBLE_ASIN] = metadata['asin']  # Additional ASIN tag
             tags[TagConstants.SIMPLE_ASIN] = metadata['asin']  # Simple ASIN tag
             tags[TagConstants.CDEK_ASIN] = metadata['asin']  # Alternative ASIN tag
         
@@ -1067,7 +1077,17 @@ class AudibleTagger:
         
         # Add narrator to artist if configured (Mp3tag setting)
         if metadata.get('narrator') and self.config.get('add_narrator_to_artist', False):
+            # Get current artist from the tags being built (current_tags is the tags dict being built)
             current_artist = current_tags.get('\xa9ART', '') if current_tags else ''
+            
+            # Debug logging to identify the source of byte strings
+            if isinstance(current_artist, bytes):
+                self.logger.debug(f"Found byte string in current_artist: {current_artist}")
+                current_artist = current_artist.decode('utf-8', errors='replace')
+            elif not isinstance(current_artist, str):
+                self.logger.debug(f"Found non-string type in current_artist: {type(current_artist)} - {current_artist}")
+                current_artist = str(current_artist)
+            
             if current_artist:
                 tags['\xa9ART'] = f"{current_artist}, {metadata['narrator']}"
             else:
@@ -1075,9 +1095,9 @@ class AudibleTagger:
         
         # Set MOVEMENTNAME and MOVEMENT tags (these are set in Audible API.inc)
         if metadata.get('series'):
-            tags[TagConstants.MOVEMENTNAME] = metadata['series'].encode('utf-8')  # MOVEMENTNAME = SERIES
+            tags[TagConstants.MOVEMENTNAME] = metadata['series']  # MOVEMENTNAME = SERIES
             if metadata.get('series_part'):
-                tags[TagConstants.MOVEMENT] = metadata['series_part'].encode('utf-8')  # MOVEMENT = SERIES-PART
+                tags[TagConstants.MOVEMENT] = metadata['series_part']  # MOVEMENT = SERIES-PART
         
         return tags
     
@@ -1106,9 +1126,27 @@ class AudibleTagger:
             tags.update(self._build_compatibility_tags(metadata))
             tags.update(self._build_missing_audible_api_tags(metadata, tags))
             
-            # Apply all tags - we need to set individual tags, not assign the whole dict
+            # Apply all tags - ensure proper format for mutagen
             for key, value in tags.items():
-                audio.tags[key] = value
+                # Ensure value is a string before encoding
+                if isinstance(value, bytes):
+                    # If it's already bytes, decode to string first to ensure proper encoding
+                    try:
+                        value = value.decode('utf-8', errors='replace')
+                    except UnicodeDecodeError:
+                        # If decoding fails, convert to string representation
+                        value = str(value)
+                elif not isinstance(value, str):
+                    # Convert other types to string
+                    value = str(value)
+                
+                # Now encode the string value
+                try:
+                    audio.tags[key] = [value.encode('utf-8')]
+                except UnicodeEncodeError as e:
+                    self.logger.warning(f"Failed to encode tag {key}: {e}")
+                    # Fallback to ASCII encoding with replacement
+                    audio.tags[key] = [value.encode('ascii', errors='replace')]
             
             # Add cover art if available
             if cover_path and self.config.get('embed_covers', True):
