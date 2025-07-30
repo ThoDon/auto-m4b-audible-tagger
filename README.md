@@ -52,7 +52,7 @@ Automatically tag and organize audiobooks with metadata from Audible's API. Feat
 ## 📋 Requirements
 
 - **Python 3.8+**
-- **FFmpeg** (for audio tagging)
+- **Mutagen** (for audio tagging)
 - **Docker** (optional, for containerized deployment)
 
 ## 🛠️ Installation
@@ -129,8 +129,11 @@ python run.py --cleanup
 # Test cover art embedding
 python run.py --test-cover <file_path>
 
-# Test FFmpeg tagging
-python run.py --test-ffmpeg <file_path>
+# Test Mutagen tagging
+python run.py --test-mutagen <file_path>
+
+# Test custom tags with standalone script
+python test_mutagen.py <file_path>
 ```
 
 ### REST API
@@ -307,7 +310,7 @@ SQLite database tracks:
 ### Common Issues
 
 1. **Permission errors**: Check file permissions on `incoming/` and `library/`
-2. **FFmpeg not found**: Install FFmpeg and ensure it's in PATH
+2. **Mutagen not found**: Install mutagen with `pip install mutagen`
 3. **Telegram bot not responding**: Verify bot token and API URL
 4. **Docker build fails**: Check Dockerfile and dependencies
 

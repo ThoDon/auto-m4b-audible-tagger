@@ -33,6 +33,10 @@ class AudiobookTelegramBot:
         
         # Check for n8n webhook URL
         self.n8n_webhook_url = os.getenv('N8N_NEW_RELEASES_WEBHOOK_URL')
+        if self.n8n_webhook_url:
+            self.logger.info(f"n8n webhook URL configured: {self.n8n_webhook_url}")
+        else:
+            self.logger.info("n8n webhook URL not configured - /getnewreleases command will not be available")
         
         # Language settings
         self.default_language = os.getenv('BOT_LANGUAGE', 'en')

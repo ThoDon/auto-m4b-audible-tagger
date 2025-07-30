@@ -8,16 +8,71 @@ import os
 import re
 import json
 import logging
-import subprocess
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import requests
 from colorama import init, Fore, Style
 from tqdm import tqdm
+from mutagen.mp4 import MP4, MP4Cover
 
 # Initialize colorama for cross-platform colored output
 init()
+
+# Constants for better maintainability
+class TagConstants:
+    """Constants for M4B tag names"""
+    # Basic tags
+    TITLE = '\xa9nam'
+    ALBUM = '\xa9alb'
+    YEAR = '\xa9day'
+    ARTIST = '\xa9ART'
+    ALBUM_ARTIST = 'aART'
+    COMPOSER = '\xa9wrt'
+    COMMENT = '\xa9cmt'
+    COPYRIGHT = '\xa9cpy'
+    GENRE = '\xa9gen'
+    
+    # iTunes custom tags
+    ASIN = '----:com.apple.iTunes:ASIN'
+    ISBN = '----:com.apple.iTunes:ISBN'
+    LANGUAGE = '----:com.apple.iTunes:LANGUAGE'
+    FORMAT = '----:com.apple.iTunes:FORMAT'
+    PUBLISHER = '----:com.apple.iTunes:PUBLISHER'
+    SUBTITLE = '----:com.apple.iTunes:SUBTITLE'
+    RELEASETIME = '----:com.apple.iTunes:RELEASETIME'
+    ALBUMARTISTS = '----:com.apple.iTunes:ALBUMARTISTS'
+    SERIES = '----:com.apple.iTunes:SERIES'
+    MOVEMENTNAME = '----:com.apple.iTunes:MOVEMENTNAME'
+    CONTENTGROUP = '----:com.apple.iTunes:CONTENTGROUP'
+    SERIES_PART = '----:com.apple.iTunes:SERIES-PART'
+    MOVEMENT = '----:com.apple.iTunes:MOVEMENT'
+    SHOWMOVEMENT = '----:com.apple.iTunes:SHOWMOVEMENT'
+    DESCRIPTION = '----:com.apple.iTunes:DESCRIPTION'
+    RATING = '----:com.apple.iTunes:RATING'
+    RATING_WMP = '----:com.apple.iTunes:RATING WMP'
+    EXPLICIT = '----:com.apple.iTunes:EXPLICIT'
+    ITUNESADVISORY = '----:com.apple.iTunes:ITUNESADVISORY'
+    ITUNESGAPLESS = '----:com.apple.iTunes:ITUNESGAPLESS'
+    ITUNESMEDIATYPE = '----:com.apple.iTunes:ITUNESMEDIATYPE'
+    WWWAUDIOFILE = '----:com.apple.iTunes:WWWAUDIOFILE'
+    AUDIBLE_ASIN = '----:com.apple.iTunes:AUDIBLE_ASIN'
+    TMP_GENRE1 = '----:com.apple.iTunes:TMP_GENRE1'
+    TMP_GENRE2 = '----:com.apple.iTunes:TMP_GENRE2'
+    
+    # Alternative tags
+    ALBUM_SORT = 'soal'
+    SHOW_MOVEMENT_ALT = 'shwm'
+    GAPLESS_ALT = 'pgap'
+    STICK = 'stik'
+    SIMPLE_ASIN = 'asin'
+    CDEK_ASIN = 'CDEK'
+    DESC_ALT = 'desc'
+    DESC_ALT2 = '\xa9des'
+    PUBLISHER_ALT = '\xa9pub'
+    NARRATOR_ALT = '\xa9nrt'
+    SERIES_ALT = '\xa9mvn'
+    GROUP = '\xa9grp'
 
 class AudibleTagger:
     def __init__(self):
@@ -62,7 +117,12 @@ class AudibleTagger:
             "create_additional_metadata": True,
             "exclude_translators": True,
             "output_single_author": False,
-            "log_level": "WARNING"
+            "log_level": "WARNING",
+            # Mp3tag Audible API Web Source compatibility settings
+            "add_narrator_to_artist": False,
+            "add_single_album_artist_only": True,
+            "add_single_genre_only": False,
+            "genre_delimiter": "/"
         }
         
         try:
@@ -678,7 +738,7 @@ class AudibleTagger:
             raise
     
     def tag_file(self, file_path: Path, metadata: Dict, cover_path: Optional[str] = None) -> bool:
-        """Tag the .m4b file with comprehensive metadata using ffmpeg"""
+        """Tag the .m4b file with comprehensive metadata using mutagen"""
         try:
             # Remove verbose metadata logging
             
@@ -695,273 +755,385 @@ class AudibleTagger:
             except Exception as e:
                 self.logger.warning(f"Could not create backup: {e}")
             
-            # Tag with ffmpeg
-            return self.tag_with_ffmpeg(file_path, metadata, cover_path)
+            # Tag with mutagen
+            return self.tag_with_mutagen(file_path, metadata, cover_path)
                 
         except Exception as e:
             self.logger.error(f"Error tagging file {file_path}: {e}")
             return False
     
-
+    def _build_basic_tags(self, metadata: Dict) -> Dict:
+        """Build basic metadata tags"""
+        tags = {}
+        
+        if metadata.get("title"):
+            tags[TagConstants.TITLE] = metadata["title"]  # Title
+            tags[TagConstants.ALBUM] = metadata["title"]  # Album
+        
+        if metadata.get("release_date"):
+            year = metadata["release_date"][:4]
+            if year:
+                tags[TagConstants.YEAR] = year  # Year
+        
+        if metadata.get("copyright"):
+            tags[TagConstants.COPYRIGHT] = metadata["copyright"]
+        
+        return tags
     
-    def tag_with_ffmpeg(self, file_path: Path, metadata: Dict, cover_path: Optional[str] = None) -> bool:
-        """Tag using ffmpeg with comprehensive metadata matching Mp3tag Audible API Web Source"""
-        try:
-            # Remove ffmpeg tagging logging
+    def _build_custom_tags(self, metadata: Dict) -> Dict:
+        """Build custom iTunes tags"""
+        tags = {}
+        
+        if metadata.get("asin"):
+            tags[TagConstants.ASIN] = metadata["asin"].encode('utf-8')
+        
+        if metadata.get("isbn"):
+            tags[TagConstants.ISBN] = metadata["isbn"].encode('utf-8')
+        
+        if metadata.get("language"):
+            tags[TagConstants.LANGUAGE] = metadata["language"].encode('utf-8')
+        
+        if metadata.get("format_type"):
+            tags[TagConstants.FORMAT] = metadata["format_type"].encode('utf-8')
+        
+        if metadata.get("publisher_name"):
+            tags[TagConstants.PUBLISHER] = metadata["publisher_name"].encode('utf-8')
+        
+        if metadata.get("subtitle"):
+            tags[TagConstants.SUBTITLE] = metadata["subtitle"].encode('utf-8')
+        
+        if metadata.get("release_time"):
+            tags[TagConstants.RELEASETIME] = metadata["release_time"].encode('utf-8')
+        
+        return tags
+    
+    def _build_author_tags(self, metadata: Dict) -> Dict:
+        """Build author and artist related tags"""
+        tags = {}
+        
+        if metadata.get('authors'):
+            if len(metadata['authors']) == 1:
+                # Single author
+                tags['\xa9ART'] = metadata['authors'][0]  # ARTIST
+                tags['aART'] = metadata['authors'][0]     # ALBUMARTIST
+            else:
+                # Multiple authors
+                author_list = "; ".join(metadata['authors'])
+                tags['\xa9ART'] = author_list  # ARTIST (Author, Narrator)
+                
+                # Handle "Add single album artist only" setting
+                if self.config.get('add_single_album_artist_only', True):
+                    tags['aART'] = metadata['authors'][0]     # ALBUMARTIST (first author only)
+                    tags['----:com.apple.iTunes:ALBUMARTISTS'] = author_list.encode('utf-8')  # ALBUMARTISTS (all authors)
+                else:
+                    tags['aART'] = author_list     # ALBUMARTIST (all authors)
+        elif metadata.get('author'):
+            # Fallback to single author field
+            tags['\xa9ART'] = metadata['author']  # ARTIST
+            tags['aART'] = metadata['author']     # ALBUMARTIST
+        
+        return tags
+    
+    def _build_narrator_tags(self, metadata: Dict) -> Dict:
+        """Build narrator and composer related tags"""
+        tags = {}
+        
+        if metadata.get('narrators'):
+            if len(metadata['narrators']) == 1:
+                tags['\xa9wrt'] = metadata['narrators'][0]  # COMPOSER (Narrator)
+            else:
+                tags['\xa9wrt'] = "; ".join(metadata['narrators'])  # COMPOSER (Narrator)
+        elif metadata.get('narrator'):
+            # Fallback to single narrator field
+            tags['\xa9wrt'] = metadata['narrator']  # COMPOSER (Narrator)
+        
+        # Add narrator to artist if configured (Mp3tag setting)
+        if metadata.get('narrator') and self.config.get('add_narrator_to_artist', False):
+            current_artist = tags.get('\xa9ART', '')
+            if current_artist:
+                tags['\xa9ART'] = f"{current_artist}; {metadata['narrator']}"
+            else:
+                tags['\xa9ART'] = metadata['narrator']
+        
+        return tags
+    
+    def _build_series_tags(self, metadata: Dict) -> Dict:
+        """Build series related tags"""
+        tags = {}
+        
+        if metadata.get('series'):
+            series_name = metadata['series']
+            series_part = metadata.get('series_part', '')
             
-            # Prepare ffmpeg command
-            cmd = [
-                'ffmpeg',
-                '-i', str(file_path),
-            ]
+            tags['----:com.apple.iTunes:SERIES'] = series_name.encode('utf-8')  # SERIES
+            tags['----:com.apple.iTunes:MOVEMENTNAME'] = series_name.encode('utf-8')  # MOVEMENTNAME
+            
+            if series_part:
+                content_group = f"{series_name} #{series_part}"
+                tags['----:com.apple.iTunes:CONTENTGROUP'] = content_group.encode('utf-8')  # CONTENTGROUP
+                tags['----:com.apple.iTunes:SERIES-PART'] = series_part.encode('utf-8')  # SERIES-PART
+                tags['----:com.apple.iTunes:MOVEMENT'] = series_part.encode('utf-8')  # MOVEMENT
+            else:
+                tags['----:com.apple.iTunes:CONTENTGROUP'] = series_name.encode('utf-8')  # CONTENTGROUP
+            
+            # Set show_movement for M4B (only if series exists)
+            tags['----:com.apple.iTunes:SHOWMOVEMENT'] = b'1'  # SHOWMOVEMENT
+            tags['shwm'] = b'1'  # Alternative show movement tag
+        
+        return tags
+    
+    def _build_description_tags(self, metadata: Dict) -> Dict:
+        """Build description and comment tags"""
+        tags = {}
+        
+        if metadata.get('description'):
+            tags['\xa9cmt'] = metadata['description']  # COMMENT (Publisher's Summary for MP3)
+            tags['----:com.apple.iTunes:DESCRIPTION'] = metadata['description'].encode('utf-8')  # DESCRIPTION (Publisher's Summary for M4B)
+            tags['desc'] = metadata['description']  # Alternative description tag
+            tags['\xa9des'] = metadata['description']  # Alternative description tag
+        
+        return tags
+    
+    def _build_genre_tags(self, metadata: Dict) -> Dict:
+        """Build genre related tags"""
+        tags = {}
+        
+        if metadata.get('genres'):
+            if self.config.get('add_single_genre_only', False) and len(metadata['genres']) > 1:
+                # Single genre only - first genre in GENRE, others in TMP_GENRE1, TMP_GENRE2
+                tags['\xa9gen'] = metadata['genres'][0]  # GENRE (first genre only)
+                if len(metadata['genres']) > 1:
+                    tags['----:com.apple.iTunes:TMP_GENRE1'] = metadata['genres'][1].encode('utf-8')  # TMP_GENRE1
+                if len(metadata['genres']) > 2:
+                    tags['----:com.apple.iTunes:TMP_GENRE2'] = metadata['genres'][2].encode('utf-8')  # TMP_GENRE2
+            else:
+                # Multiple genres with delimiter
+                delimiter = self.config.get('genre_delimiter', '/')
+                tags['\xa9gen'] = delimiter.join(metadata['genres'])  # GENRE (Genre1/Genre2)
+        
+        return tags
+    
+    def _build_rating_tags(self, metadata: Dict) -> Dict:
+        """Build rating related tags"""
+        tags = {}
+        
+        if metadata.get('rating'):
+            tags['----:com.apple.iTunes:RATING'] = metadata['rating'].encode('utf-8')  # RATING (Audible Rating)
+            tags['----:com.apple.iTunes:RATING WMP'] = metadata['rating'].encode('utf-8')  # RATING WMP (Audible Rating for MP3)
+        
+        return tags
+    
+    def _build_adult_content_tags(self, metadata: Dict) -> Dict:
+        """Build adult content flags"""
+        tags = {}
+        
+        if metadata.get('is_adult_product'):
+            tags['----:com.apple.iTunes:EXPLICIT'] = b'1'  # EXPLICIT (Set to 1 if adult content)
+            tags['----:com.apple.iTunes:ITUNESADVISORY'] = b'1'  # ITUNESADVISORY (Set to 1 if adult content for M4B)
+        else:
+            tags['----:com.apple.iTunes:EXPLICIT'] = b'0'  # EXPLICIT (Set to 0 if clean)
+            tags['----:com.apple.iTunes:ITUNESADVISORY'] = b'2'  # ITUNESADVISORY (Set to 2 if clean for M4B)
+        
+        return tags
+    
+    def _build_itunes_tags(self) -> Dict:
+        """Build iTunes specific tags"""
+        tags = {}
+        
+        tags['----:com.apple.iTunes:ITUNESGAPLESS'] = b'1'  # ITUNESGAPLESS (M4B Gapless album = 1)
+        tags['----:com.apple.iTunes:ITUNESMEDIATYPE'] = b'Audiobook'  # ITUNESMEDIATYPE (M4B Media type = Audiobook)
+        tags['pgap'] = b'True'  # Alternative gapless tag
+        tags['stik'] = b'2'     # Audiobook stick
+        
+        return tags
+    
+    def _build_audible_tags(self, metadata: Dict) -> Dict:
+        """Build Audible specific tags"""
+        tags = {}
+        
+        if metadata.get('asin'):
+            locale = self.config.get('preferred_locale', 'com')
+            audible_url = f"https://www.audible.{locale}/pd/{metadata['asin']}"
+            tags['----:com.apple.iTunes:WWWAUDIOFILE'] = audible_url.encode('utf-8')  # WWWAUDIOFILE (Audible Album URL)
+            tags['----:com.apple.iTunes:ASIN'] = metadata['asin'].encode('utf-8')  # ASIN (Amazon Standard Identification Number)
+            tags['----:com.apple.iTunes:AUDIBLE_ASIN'] = metadata['asin'].encode('utf-8')  # Additional ASIN tag
+            tags['asin'] = metadata['asin']  # Simple ASIN tag
+            tags['CDEK'] = metadata['asin']  # Alternative ASIN tag
+        
+        return tags
+    
+    def _build_album_sort_tag(self, metadata: Dict) -> Dict:
+        """Build album sort tag"""
+        tags = {}
+        
+        if metadata.get('series'):
+            if metadata.get('series_part'):
+                album_sort = f"{metadata['series']} {metadata['series_part']} - {metadata.get('title', '')}"  # Series Series-Part - Title
+            else:
+                album_sort = f"{metadata['series']} - {metadata.get('title', '')}"  # Series - Title
+        elif metadata.get('subtitle'):
+            album_sort = f"{metadata.get('title', '')} - {metadata['subtitle']}"  # Title - Subtitle
+        else:
+            album_sort = metadata.get('title', '')  # Title only
+        
+        if album_sort:
+            tags['soal'] = album_sort  # ALBUMSORT
+        
+        return tags
+    
+    def _build_compatibility_tags(self, metadata: Dict) -> Dict:
+        """Build additional compatibility tags"""
+        tags = {}
+        
+        if metadata.get('publisher_name'):
+            tags['\xa9pub'] = metadata['publisher_name']  # Alternative publisher tag
+        
+        if metadata.get('narrator'):
+            tags['\xa9nrt'] = metadata['narrator']  # Alternative narrator tag
+        
+        if metadata.get('series'):
+            tags['\xa9mvn'] = metadata['series']  # Alternative series tag
+            if metadata.get('series_part'):
+                tags['\xa9grp'] = f"{metadata['series']}, Book #{metadata['series_part']}"  # Group tag
+            else:
+                tags['\xa9grp'] = metadata['series']  # Group tag without part
+        
+        return tags
+    
+    def tag_with_mutagen(self, file_path: Path, metadata: Dict, cover_path: Optional[str] = None) -> bool:
+        """Tag using mutagen with comprehensive metadata matching Mp3tag Audible API Web Source"""
+        try:
+            # Load the M4B file
+            audio = MP4(str(file_path))
+            
+            # Build comprehensive metadata dictionary using helper methods
+            tags = {}
+            
+            # Build all tag categories
+            tags.update(self._build_basic_tags(metadata))
+            tags.update(self._build_custom_tags(metadata))
+            tags.update(self._build_author_tags(metadata))
+            tags.update(self._build_narrator_tags(metadata))
+            tags.update(self._build_series_tags(metadata))
+            tags.update(self._build_description_tags(metadata))
+            tags.update(self._build_genre_tags(metadata))
+            tags.update(self._build_rating_tags(metadata))
+            tags.update(self._build_adult_content_tags(metadata))
+            tags.update(self._build_itunes_tags())
+            tags.update(self._build_audible_tags(metadata))
+            tags.update(self._build_album_sort_tag(metadata))
+            tags.update(self._build_compatibility_tags(metadata))
+            
+            # Apply all tags - we need to set individual tags, not assign the whole dict
+            for key, value in tags.items():
+                audio.tags[key] = value
             
             # Add cover art if available
             if cover_path and self.config.get('embed_covers', True):
-                cmd.extend(['-i', cover_path])
+                try:
+                    with open(cover_path, 'rb') as f:
+                        cover_data = f.read()
+                    audio['covr'] = [MP4Cover(cover_data)]
+                except Exception as e:
+                    self.logger.warning(f"Could not embed cover art: {e}")
             
-            # Add output options
-            cmd.extend([
-                '-c', 'copy',  # Copy streams without re-encoding
-            ])
+            # Save the file
+            audio.save()
             
-            # Add cover art mapping if cover is provided
+            # Verify tags (but don't fail the entire process)
+            verification_result = self.verify_mutagen_tags(file_path, metadata)
+            
+            # Verify cover art if it was supposed to be embedded
             if cover_path and self.config.get('embed_covers', True):
-                cmd.extend(['-map', '0:a', '-map', '1:v', '-disposition:v:0', 'attached_pic'])
+                if not self.verify_cover_art(file_path):
+                    self.logger.warning("⚠️ Cover art may not have been embedded correctly")
             
-            # Build comprehensive metadata list matching Mp3tag Audible API Web Source
-            metadata_list = []
-            
-            # Basic fields (using exact Mp3tag field names)
-            metadata_list.extend([
-                ('TITLE', metadata.get("title", "")),
-                ('ALBUM', metadata.get("title", "")),
-                ('YEAR', metadata.get("release_date", "")[:4] if metadata.get("release_date") else ""),
-                ('ASIN', metadata.get("asin", "")),
-                ('ISBN', metadata.get("isbn", "")),
-                ('COPYRIGHT', metadata.get("copyright", "")),
-                ('LANGUAGE', metadata.get("language", "")),
-                ('FORMAT', metadata.get("format_type", "")),
-                ('PUBLISHER', metadata.get("publisher_name", "")),
-                ('SUBTITLE', metadata.get("subtitle", "")),
-                ('RELEASETIME', metadata.get("release_time", "")),
-            ])
-            
-            # Author/Artist handling (matching Mp3tag behavior)
-            if metadata.get('authors'):
-                if len(metadata['authors']) == 1:
-                    # Single author
-                    metadata_list.extend([
-                        ('ARTIST', metadata['authors'][0]),
-                        ('ALBUMARTIST', metadata['authors'][0]),
-                    ])
-                else:
-                    # Multiple authors
-                    author_list = "; ".join(metadata['authors'])
-                    metadata_list.extend([
-                        ('ARTIST', author_list),
-                        ('ALBUMARTIST', metadata['authors'][0]),  # First author as album_artist
-                        ('ALBUMARTISTS', author_list),  # All authors
-                    ])
-            
-            # Narrator/Composer handling
-            if metadata.get('narrators'):
-                if len(metadata['narrators']) == 1:
-                    metadata_list.extend([
-                        ('COMPOSER', metadata['narrators'][0]),
-                    ])
-                else:
-                    metadata_list.extend([
-                        ('COMPOSER', "; ".join(metadata['narrators'])),
-                    ])
-            
-            # Series information
-            if metadata.get('series'):
-                series_name = metadata['series']
-                series_part = metadata.get('series_part', '')
-                
-                metadata_list.extend([
-                    ('SERIES', series_name),
-                    ('MOVEMENTNAME', series_name),
-                    ('CONTENTGROUP', f"{series_name} #{series_part}" if series_part else series_name),
-                ])
-                
-                if series_part:
-                    metadata_list.extend([
-                        ('SERIES-PART', series_part),
-                        ('MOVEMENT', series_part),
-                    ])
-                
-                # Set show_movement for M4B
-                metadata_list.append(('SHOWMOVEMENT', '1'))
-            
-            # Description/Summary
-            if metadata.get('description'):
-                metadata_list.extend([
-                    ('COMMENT', metadata['description']),
-                    ('DESCRIPTION', metadata['description']),
-                ])
-            
-            # Genres
-            if metadata.get('genres'):
-                metadata_list.extend([
-                    ('GENRE', "/".join(metadata['genres'])),
-                ])
-            
-            # Rating
-            if metadata.get('rating'):
-                metadata_list.extend([
-                    ('RATING', metadata['rating']),
-                ])
-            
-            # Adult content flags
-            if metadata.get('is_adult_product'):
-                metadata_list.extend([
-                    ('EXPLICIT', '1'),
-                    ('ITUNESADVISORY', '1'),
-                ])
-            else:
-                metadata_list.extend([
-                    ('EXPLICIT', '0'),
-                    ('ITUNESADVISORY', '2'),
-                ])
-            
-            # iTunes specific fields for M4B
-            metadata_list.extend([
-                ('ITUNESGAPLESS', '1'),
-                ('ITUNESMEDIATYPE', 'Audiobook'),
-            ])
-            
-            # Audible URL
-            if metadata.get('asin'):
-                locale = self.config.get('preferred_locale', 'com')
-                metadata_list.append(('WWWAUDIOFILE', f"https://www.audible.{locale}/pd/{metadata['asin']}"))
-            
-            # Album sort order (matching Mp3tag logic)
-            if metadata.get('series'):
-                if metadata.get('series_part'):
-                    album_sort = f"{metadata['series']} #{metadata['series_part']} - {metadata.get('title', '')}"
-                else:
-                    album_sort = f"{metadata['series']} - {metadata.get('title', '')}"
-            elif metadata.get('subtitle'):
-                album_sort = f"{metadata.get('title', '')} - {metadata['subtitle']}"
-            else:
-                album_sort = metadata.get('title', '')
-            
-            metadata_list.append(('ALBUMSORT', album_sort))
-            
-            # Add all metadata to ffmpeg command
-            for key, value in metadata_list:
-                if value:  # Only add non-empty values
-                    cmd.extend(['-metadata', f'{key}={value}'])
-            
-            # Output file - use a different name to avoid conflicts
-            output_path = file_path.with_name(f"{file_path.stem}_tagged.m4b")
-            cmd.append(str(output_path))
-            
-            # Remove ffmpeg command logging
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
-            
-            if result.returncode == 0:
-                # Remove ffmpeg success logging
-                
-                # Replace original with tagged file
-                os.remove(file_path)
-                os.rename(output_path, file_path)
-                # Remove file replacement logging
-                
-                # Clean up backup file
-                backup_path = file_path.with_suffix('.m4b.backup')
-                if backup_path.exists():
-                    os.remove(backup_path)
-                    # Remove backup removal logging
-                
-                # Verify tags (but don't fail the entire process)
-                verification_result = self.verify_ffmpeg_tags(file_path, metadata)
-                
-                # Verify cover art if it was supposed to be embedded
-                if cover_path and self.config.get('embed_covers', True):
-                    if not self.verify_cover_art(file_path):
-                        self.logger.warning("⚠️ Cover art may not have been embedded correctly")
-                
-                # Return True even if verification had warnings - the file was still processed
-                return True
-            else:
-                self.logger.error(f"ffmpeg error: {result.stderr}")
-                self.logger.error(f"ffmpeg stdout: {result.stdout}")
-                return False
+            # Return True even if verification had warnings - the file was still processed
+            return True
                 
         except Exception as e:
-            self.logger.error(f"Error with ffmpeg tagging: {e}")
+            self.logger.error(f"Error with mutagen tagging: {e}")
             return False
     
-    def verify_ffmpeg_tags(self, file_path: Path, expected_metadata: Dict) -> bool:
-        """Verify tags using ffprobe"""
+    def verify_mutagen_tags(self, file_path: Path, expected_metadata: Dict) -> bool:
+        """Verify tags using mutagen"""
         try:
-            cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', str(file_path)]
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
+            audio = MP4(str(file_path))
+            if not audio.tags:
+                self.logger.warning("No tags found in file")
+                return False
             
-            if result.returncode == 0:
-                data = json.loads(result.stdout)
-                format_info = data.get('format', {})
-                tags = format_info.get('tags', {})
-                
-                # Remove ffprobe metadata logging
-                
-                # Check if expected tags are present
-                expected_title = expected_metadata.get('title', '')
-                expected_artist = expected_metadata.get('author', '')
-                expected_description = expected_metadata.get('description', '')
-                
-                verification_passed = True
-                
-                if expected_title and expected_title not in str(tags):
+            tags = audio.tags
+            
+            # Check if expected tags are present
+            expected_title = expected_metadata.get('title', '')
+            expected_artist = expected_metadata.get('author', '')
+            expected_description = expected_metadata.get('description', '')
+            
+            verification_passed = True
+            
+            # Check title
+            if expected_title:
+                title_tag = tags.get('\xa9nam', [])
+                if not title_tag or expected_title not in str(title_tag[0]):
                     self.logger.warning(f"Expected title '{expected_title}' not found in metadata")
                     verification_passed = False
-                
-                if expected_artist and expected_artist not in str(tags):
+            
+            # Check artist
+            if expected_artist:
+                artist_tag = tags.get('\xa9ART', [])
+                if not artist_tag or expected_artist not in str(artist_tag[0]):
                     self.logger.warning(f"Expected artist '{expected_artist}' not found in metadata")
                     verification_passed = False
-                
-                if expected_description and expected_description not in str(tags):
+            
+            # Check description
+            if expected_description:
+                comment_tag = tags.get('\xa9cmt', [])
+                if not comment_tag or expected_description not in str(comment_tag[0]):
                     self.logger.warning(f"Expected description not found in metadata")
                     verification_passed = False
-                
-                # Return True even if some tags are missing - just log warnings
-                if not verification_passed:
-                    self.logger.warning("Some expected tags were not found, but continuing with processing...")
-                
-                return True
-            else:
-                self.logger.warning(f"Could not read metadata with ffprobe: {result.stderr}")
-                return False
+            
+            # Check custom tags
+            if expected_metadata.get('asin'):
+                asin_tag = tags.get('----:com.apple.iTunes:ASIN', [])
+                if not asin_tag or expected_metadata['asin'] not in str(asin_tag[0]):
+                    self.logger.warning(f"Expected ASIN '{expected_metadata['asin']}' not found in metadata")
+                    verification_passed = False
+            
+            if expected_metadata.get('series'):
+                series_tag = tags.get('----:com.apple.iTunes:SERIES', [])
+                if not series_tag or expected_metadata['series'] not in str(series_tag[0]):
+                    self.logger.warning(f"Expected series '{expected_metadata['series']}' not found in metadata")
+                    verification_passed = False
+            
+            # Return True even if some tags are missing - just log warnings
+            if not verification_passed:
+                self.logger.warning("Some expected tags were not found, but continuing with processing...")
+            
+            return True
                 
         except Exception as e:
-            self.logger.error(f"Error verifying ffmpeg tags: {e}")
+            self.logger.error(f"Error verifying mutagen tags: {e}")
             return False
     
 
     def verify_cover_art(self, file_path: Path) -> bool:
         """Verify that cover art was embedded in the file"""
         try:
-            # Use ffprobe to check if artwork exists
-            cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams', str(file_path)]
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
+            audio = MP4(str(file_path))
+            if not audio.tags:
+                self.logger.warning(f"No tags found in: {file_path}")
+                return False
             
-            if result.returncode == 0:
-                data = json.loads(result.stdout)
-                streams = data.get('streams', [])
-                
-                # Check if there's a video stream (cover art)
-                for stream in streams:
-                    if stream.get('codec_type') == 'video':
-                        # Remove cover art verification logging
-                        return True
-                
-                self.logger.warning(f"No cover art found in: {file_path}")
-                return False
-            else:
-                self.logger.warning(f"Could not verify cover art for: {file_path}")
-                return False
+            # Check if cover art exists in tags
+            if 'covr' in audio.tags:
+                cover_data = audio.tags['covr']
+                if cover_data and len(cover_data) > 0:
+                    # Remove cover art verification logging
+                    return True
+            
+            self.logger.warning(f"No cover art found in: {file_path}")
+            return False
                 
         except Exception as e:
             self.logger.error(f"Error verifying cover art: {e}")
@@ -972,20 +1144,37 @@ class AudibleTagger:
     def extract_cover_art(self, file_path: Path, output_path: Path) -> bool:
         """Extract cover art from file to verify it was embedded"""
         try:
-            # Use ffmpeg to extract cover art
-            cmd = ['ffmpeg', '-i', str(file_path), '-vf', 'select=eq(n\\,0)', '-vframes', '1', str(output_path)]
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
+            audio = MP4(str(file_path))
+            if not audio.tags or 'covr' not in audio.tags:
+                self.logger.warning(f"No cover art found in: {file_path}")
+                return False
             
-            if result.returncode == 0:
-                # Check if image file was created
-                if output_path.exists():
-                    # Remove cover art extraction logging
-                    return True
+            cover_data = audio.tags['covr']
+            if not cover_data or len(cover_data) == 0:
+                self.logger.warning(f"No cover art data found in: {file_path}")
+                return False
+            
+            # Extract the first cover image
+            cover = cover_data[0]
+            if hasattr(cover, 'imageformat'):
+                # Determine file extension based on image format
+                if cover.imageformat == MP4Cover.FORMAT_JPEG:
+                    output_path = output_path.with_suffix('.jpg')
+                elif cover.imageformat == MP4Cover.FORMAT_PNG:
+                    output_path = output_path.with_suffix('.png')
                 else:
-                    self.logger.warning(f"No cover art could be extracted from: {file_path}")
-                    return False
+                    output_path = output_path.with_suffix('.jpg')  # Default to jpg
+            
+            # Write cover art to file
+            with open(output_path, 'wb') as f:
+                f.write(cover)
+            
+            # Check if image file was created
+            if output_path.exists():
+                # Remove cover art extraction logging
+                return True
             else:
-                self.logger.warning(f"Could not extract cover art from: {file_path}")
+                self.logger.warning(f"No cover art could be extracted from: {file_path}")
                 return False
                 
         except Exception as e:
@@ -1105,11 +1294,146 @@ class AudibleTagger:
             print(f"{Fore.YELLOW}Description:{Style.RESET_ALL} {metadata['description'][:200]}...")
         print()
     
-    def process_file(self, file_path: Path) -> bool:
-        """Process a single .m4b file"""
+    def _handle_no_search_results(self, search_query: str) -> Optional[List[Dict]]:
+        """Handle case when no search results are found - UI logic"""
+        print(f"{Fore.RED}No results found for: {search_query}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Options:{Style.RESET_ALL}")
+        print("1. Enter custom search query")
+        print("2. Enter title only")
+        print("3. Enter author only")
+        print("4. Skip this file")
+        
+        choice = input(f"\n{Fore.CYAN}Choose option (1-4): {Style.RESET_ALL}").strip()
+        
+        if choice == "1":
+            custom_query = input("Enter custom search query: ").strip()
+            if custom_query:
+                return self.search_audible(custom_query)
+        elif choice == "2":
+            title_only = input("Enter book title: ").strip()
+            if title_only:
+                return self.search_audible(title_only)
+        elif choice == "3":
+            author_only = input("Enter author name: ").strip()
+            if author_only:
+                return self.search_audible(author_only)
+        elif choice == "4":
+            return None
+        
+        print(f"{Fore.RED}Invalid choice. Skipping file.{Style.RESET_ALL}")
+        return None
+    
+    def _handle_search_retry(self, results: List[Dict]) -> Optional[List[Dict]]:
+        """Handle search retry - UI logic"""
+        print(f"{Fore.YELLOW}Search options:{Style.RESET_ALL}")
+        print("1. Enter custom search query")
+        print("2. Enter title only")
+        print("3. Enter author only")
+        
+        search_choice = input(f"{Fore.CYAN}Choose search option (1-3): {Style.RESET_ALL}").strip()
+        
+        if search_choice == "1":
+            custom_query = input("Enter custom search query: ").strip()
+            if custom_query:
+                return self.search_audible(custom_query)
+        elif search_choice == "2":
+            title_only = input("Enter book title: ").strip()
+            if title_only:
+                return self.search_audible(title_only)
+        elif search_choice == "3":
+            author_only = input("Enter author name: ").strip()
+            if author_only:
+                return self.search_audible(author_only)
+        
+        print(f"{Fore.RED}Invalid choice. Please try again.{Style.RESET_ALL}")
+        return results
+    
+    def _get_user_selection(self, results: List[Dict]) -> Optional[Dict]:
+        """Get user selection from search results - UI logic"""
+        # Display search results
+        print(f"\n{Fore.CYAN}📖 Search Results:{Style.RESET_ALL}")
+        for i, result in enumerate(results, 1):
+            print(f"{i}. {result['title']} by {result['author']}")
+            if result.get('narrator'):
+                print(f"   Narrated by: {result['narrator']}")
+        
+        # Get user selection with option to search again
+        while True:
+            try:
+                choice = input(f"\nSelect book (1-{len(results)}) or 's' to skip, 'r' to search again: ").strip()
+                if choice.lower() == 's':
+                    return None
+                elif choice.lower() == 'r':
+                    new_results = self._handle_search_retry(results)
+                    if new_results is None or not new_results:
+                        print(f"{Fore.RED}No results found. Skipping file.{Style.RESET_ALL}")
+                        return None
+                    
+                    # Display new results
+                    print(f"\n{Fore.CYAN}📖 New Search Results:{Style.RESET_ALL}")
+                    for i, result in enumerate(new_results, 1):
+                        print(f"{i}. {result['title']} by {result['author']}")
+                        if result.get('narrator'):
+                            print(f"   Narrated by: {result['narrator']}")
+                    results = new_results
+                    continue
+                
+                choice_idx = int(choice) - 1
+                if 0 <= choice_idx < len(results):
+                    return results[choice_idx]
+                else:
+                    print(f"{Fore.RED}Invalid choice. Please try again.{Style.RESET_ALL}")
+            except ValueError:
+                print(f"{Fore.RED}Invalid input. Please enter a number.{Style.RESET_ALL}")
+    
+    def _process_file_core(self, file_path: Path, selected_result: Dict) -> bool:
+        """Core file processing logic without UI dependencies"""
         try:
-            # Remove file processing logging
+            # Get detailed book information
+            details = self.get_book_details(selected_result['asin'], selected_result.get('locale', 'com'))
+            if not details:
+                return False
             
+            # Download cover
+            cover_path = None
+            if details.get('cover_url'):
+                cover_path = self.download_cover(details['cover_url'], details['asin'])
+            
+            # Tag the file
+            if self.tag_file(file_path, details, cover_path):
+                # Move to library
+                final_path = self.move_to_library(file_path, details, cover_path)
+                
+                # Final verification of the moved file
+                if cover_path:
+                    self.verify_cover_art(final_path)
+                
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error in core processing for {file_path}: {e}")
+            return False
+    
+    def process_file_programmatic(self, file_path: Path, asin: str, locale: str = 'com') -> bool:
+        """Process a file programmatically without UI interaction (for API/Telegram bot)"""
+        try:
+            # Create a mock selected result for the core processing
+            selected_result = {
+                'asin': asin,
+                'locale': locale
+            }
+            
+            return self._process_file_core(file_path, selected_result)
+            
+        except Exception as e:
+            self.logger.error(f"Error in programmatic processing for {file_path}: {e}")
+            return False
+    
+    def process_file(self, file_path: Path) -> bool:
+        """Process a single .m4b file with UI interaction"""
+        try:
             # Parse filename
             title, author = self.parse_filename(file_path.name)
             
@@ -1125,134 +1449,29 @@ class AudibleTagger:
             # Search Audible
             results = self.search_audible(search_query)
             
+            # Handle no results case
             if not results:
-                print(f"{Fore.RED}No results found for: {search_query}{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}Options:{Style.RESET_ALL}")
-                print("1. Enter custom search query")
-                print("2. Enter title only")
-                print("3. Enter author only")
-                print("4. Skip this file")
-                
-                choice = input(f"\n{Fore.CYAN}Choose option (1-4): {Style.RESET_ALL}").strip()
-                
-                if choice == "1":
-                    custom_query = input("Enter custom search query: ").strip()
-                    if custom_query:
-                        results = self.search_audible(custom_query)
-                elif choice == "2":
-                    title_only = input("Enter book title: ").strip()
-                    if title_only:
-                        results = self.search_audible(title_only)
-                elif choice == "3":
-                    author_only = input("Enter author name: ").strip()
-                    if author_only:
-                        results = self.search_audible(author_only)
-                elif choice == "4":
-                    return False
-                else:
-                    print(f"{Fore.RED}Invalid choice. Skipping file.{Style.RESET_ALL}")
+                results = self._handle_no_search_results(search_query)
+                if not results:
                     return False
             
-            if not results:
-                print(f"{Fore.RED}No results found. Skipping file.{Style.RESET_ALL}")
-                return False
-            
-            # Display search results
-            print(f"\n{Fore.CYAN}📖 Search Results:{Style.RESET_ALL}")
-            for i, result in enumerate(results, 1):
-                print(f"{i}. {result['title']} by {result['author']}")
-                if result.get('narrator'):
-                    print(f"   Narrated by: {result['narrator']}")
-            
-            # Get user selection with option to search again
-            while True:
-                try:
-                    choice = input(f"\nSelect book (1-{len(results)}) or 's' to skip, 'r' to search again: ").strip()
-                    if choice.lower() == 's':
-                        return False
-                    elif choice.lower() == 'r':
-                        print(f"{Fore.YELLOW}Search options:{Style.RESET_ALL}")
-                        print("1. Enter custom search query")
-                        print("2. Enter title only")
-                        print("3. Enter author only")
-                        
-                        search_choice = input(f"{Fore.CYAN}Choose search option (1-3): {Style.RESET_ALL}").strip()
-                        
-                        if search_choice == "1":
-                            custom_query = input("Enter custom search query: ").strip()
-                            if custom_query:
-                                results = self.search_audible(custom_query)
-                        elif search_choice == "2":
-                            title_only = input("Enter book title: ").strip()
-                            if title_only:
-                                results = self.search_audible(title_only)
-                        elif search_choice == "3":
-                            author_only = input("Enter author name: ").strip()
-                            if author_only:
-                                results = self.search_audible(author_only)
-                        else:
-                            print(f"{Fore.RED}Invalid choice. Please try again.{Style.RESET_ALL}")
-                            continue
-                        
-                        if not results:
-                            print(f"{Fore.RED}No results found. Skipping file.{Style.RESET_ALL}")
-                            return False
-                        
-                        # Display new results
-                        print(f"\n{Fore.CYAN}📖 New Search Results:{Style.RESET_ALL}")
-                        for i, result in enumerate(results, 1):
-                            print(f"{i}. {result['title']} by {result['author']}")
-                            if result.get('narrator'):
-                                print(f"   Narrated by: {result['narrator']}")
-                        continue
-                    
-                    choice_idx = int(choice) - 1
-                    if 0 <= choice_idx < len(results):
-                        selected = results[choice_idx]
-                        break
-                    else:
-                        print(f"{Fore.RED}Invalid choice. Please try again.{Style.RESET_ALL}")
-                except ValueError:
-                    print(f"{Fore.RED}Invalid input. Please enter a number.{Style.RESET_ALL}")
-            
-            # Get detailed book information
-            details = self.get_book_details(selected['asin'], selected.get('locale', 'com'))
-            if not details:
-                print(f"{Fore.RED}Failed to get book details. Skipping file.{Style.RESET_ALL}")
+            # Get user selection
+            selected = self._get_user_selection(results)
+            if not selected:
                 return False
             
             # Display book information
-            self.display_book_info(details)
+            self.display_book_info(selected)
             
-            # Proceed directly with tagging (user already confirmed by selecting the book)
+            # Process the file using core logic
+            success = self._process_file_core(file_path, selected)
             
-            # Download cover
-            cover_path = None
-            if details.get('cover_url'):
-                cover_path = self.download_cover(details['cover_url'], details['asin'])
-            
-            # Tag the file
-            if self.tag_file(file_path, details, cover_path):
-                # Verify cover art was embedded
-                if cover_path:
-                    cover_embedded = self.verify_cover_art(file_path)
-                    if cover_embedded:
-                        print(f"{Fore.GREEN}🖼️ Cover art embedded successfully{Style.RESET_ALL}")
-                    else:
-                        print(f"{Fore.YELLOW}⚠️ Cover art may not have been embedded{Style.RESET_ALL}")
-                
-                # Move to library
-                final_path = self.move_to_library(file_path, details, cover_path)
+            if success:
                 print(f"{Fore.GREEN}✅ Successfully processed: {file_path.name}{Style.RESET_ALL}")
-                
-                # Final verification of the moved file
-                if cover_path:
-                    self.verify_cover_art(final_path)
-                
-                return True
             else:
                 print(f"{Fore.RED}❌ Failed to process: {file_path.name}{Style.RESET_ALL}")
-                return False
+            
+            return success
                 
         except Exception as e:
             self.logger.error(f"Error processing file {file_path}: {e}")

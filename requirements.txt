@@ -3,4 +3,5 @@ colorama>=0.4.6
 tqdm>=4.65.0 
 flask>=2.3.0
 flask-cors>=4.0.0
-python-telegram-bot>=20.0 
+python-telegram-bot>=20.0
+mutagen>=1.47.0 
