@@ -14,16 +14,19 @@ import asyncio
 from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
-from translations import get_text, get_supported_languages
-
 # Add the current directory to the path
 sys.path.insert(0, str(Path(__file__).parent))
+
+from translations import get_text, get_supported_languages
 
 
 class AudiobookTelegramBot:
     """Telegram bot for audiobook processing"""
     
     def __init__(self, api_url: str, token: str):
+        # Setup logging first
+        self.setup_logging()
+        
         self.api_url = api_url.rstrip('/')
         self.token = token
         self.app = Application.builder().token(token).build()
@@ -41,9 +44,6 @@ class AudiobookTelegramBot:
         # Language settings
         self.default_language = os.getenv('BOT_LANGUAGE', 'en')
         self.user_languages = {}  # user_id -> language
-        
-        # Setup logging
-        self.setup_logging()
         
         # Register handlers
         self.register_handlers()
