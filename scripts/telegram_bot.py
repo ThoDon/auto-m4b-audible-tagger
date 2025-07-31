@@ -152,7 +152,7 @@ class AudiobookTelegramBot:
         except Exception as e:
             self.logger.error(f"Failed to set bot commands: {e}")
 
-    async def start_command(self, update: Update):
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
         # Set up bot commands on first start
         try:
@@ -218,33 +218,18 @@ class AudiobookTelegramBot:
                 # Create inline keyboard for processing options
                 keyboard = []
                 for i, book in enumerate(data["audiobooks"]):
-                    row = [
-                        InlineKeyboardButton(
-                            get_text("button_search", language, i + 1),
-                            callback_data=f"search:{book['id']}",
-                        ),
-                        InlineKeyboardButton(
-                            get_text("button_skip", language, i + 1),
-                            callback_data=f"skip:{book['id']}",
-                        ),
-                    ]
-
-                    # Add auto-tagging button if enabled
-                    try:
-                        # Check if auto-tagging is enabled by making a test request
-                        config_response = requests.get(f"{self.api_url}/health")
-                        if config_response.status_code == 200:
-                            # Add auto-tagging button
-                            row.append(
-                                InlineKeyboardButton(
-                                    "🤖 Auto", callback_data=f"auto:{book['id']}"
-                                )
-                            )
-                    except:
-                        # If we can't check, don't add the button
-                        pass
-
-                    keyboard.append(row)
+                    keyboard.append(
+                        [
+                            InlineKeyboardButton(
+                                get_text("button_search", language, i + 1),
+                                callback_data=f"search:{book['id']}",
+                            ),
+                            InlineKeyboardButton(
+                                get_text("button_skip", language, i + 1),
+                                callback_data=f"skip:{book['id']}",
+                            ),
+                        ]
+                    )
 
                 reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -371,9 +356,6 @@ class AudiobookTelegramBot:
         elif parts[0] == "skip":
             file_id = parts[1]
             await self.handle_skip_callback(query, file_id)
-        elif parts[0] == "auto":
-            file_id = parts[1]
-            await self.handle_auto_callback(query, file_id)
         elif parts[0] == "process":
             file_id = parts[1]
             selection_id = parts[2]
@@ -800,7 +782,7 @@ class AudiobookTelegramBot:
                 + get_text("error_debug_info", language, type(e).__name__)
             )
 
-    async def auto_command(self, update: Update):
+    async def auto_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /auto command - batch auto-process all audiobooks"""
         user_id = update.effective_user.id
         language = self.get_user_language(user_id)
@@ -858,48 +840,6 @@ class AudiobookTelegramBot:
             await update.message.reply_text(
                 f"❌ Error during auto-processing: {str(e)}"
             )
-
-    async def handle_auto_callback(self, query, file_id):
-        """Handle auto-tagging callback for individual files"""
-        user_id = query.from_user.id
-        language = self.get_user_language(user_id)
-
-        try:
-            # Show processing message
-            await query.edit_message_text("🤖 Auto-processing...")
-
-            # Make auto-processing request
-            response = requests.post(f"{self.api_url}/audiobooks/{file_id}/auto")
-            data = response.json()
-
-            if data["status"] == "success":
-                asin = data.get("asin", "unknown")
-                message = f"✅ **Auto-Processing Successful**\n\n"
-                message += f"📁 File ID: `{file_id}`\n"
-                message += f"🏷️ ASIN: `{asin}`\n"
-                message += f"🤖 Auto-processed: Yes\n\n"
-                message += "The audiobook has been automatically tagged and moved to the library!"
-
-                await query.edit_message_text(message, parse_mode="Markdown")
-            else:
-                error_msg = data.get("message", "Unknown error")
-                if "no ASIN found" in error_msg.lower():
-                    message = f"❌ **Auto-Processing Failed**\n\n"
-                    message += f"📁 File ID: `{file_id}`\n"
-                    message += f"❌ No ASIN tag found in the file\n\n"
-                    message += "This file needs manual processing or search."
-                else:
-                    message = f"❌ **Auto-Processing Failed**\n\n"
-                    message += f"📁 File ID: `{file_id}`\n"
-                    message += f"❌ Error: {error_msg}"
-
-                await query.edit_message_text(message, parse_mode="Markdown")
-
-        except Exception as e:
-            self.logger.error(f"Error in auto callback: {e}")
-            error_details = traceback.format_exc()
-            self.logger.error(f"Full traceback: {error_details}")
-            await query.edit_message_text(f"❌ Error during auto-processing: {str(e)}")
 
     def run(self):
         """Run the Telegram bot"""
