@@ -615,18 +615,6 @@ class AudiobookAPI:
         def batch_auto_process_audiobooks():
             """Automatically process all audiobooks that have ASIN tags"""
             try:
-                # Check if auto-tagging is enabled
-                if not self.tagger.config.get("auto_tag_enabled", False):
-                    return (
-                        jsonify(
-                            {
-                                "status": "error",
-                                "message": "Auto-tagging is disabled in configuration",
-                            }
-                        ),
-                        400,
-                    )
-
                 # Get all pending audiobooks
                 audiobooks = self.db.get_audiobooks_by_status("pending")
                 if not audiobooks:

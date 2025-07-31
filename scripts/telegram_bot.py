@@ -167,7 +167,8 @@ class AudiobookTelegramBot:
 {get_text('welcome_title', language)}
 
 {get_text('welcome_commands', language)}
-{get_text('welcome_list', language)}"""
+{get_text('welcome_list', language)}
+{get_text('welcome_auto', language)}"""
 
         # Add conditional commands
         if self.n8n_webhook_url:
@@ -789,7 +790,7 @@ class AudiobookTelegramBot:
 
         try:
             # Show processing message
-            await update.message.reply_text("🤖 Starting batch auto-processing...")
+            await update.message.reply_text(get_text("auto_start", language))
 
             # Make batch auto-processing request
             response = requests.post(f"{self.api_url}/audiobooks/auto/batch")
@@ -802,35 +803,45 @@ class AudiobookTelegramBot:
                 total = data.get("total", 0)
 
                 # Build success message
-                message = f"🤖 **Batch Auto-Processing Complete**\n\n"
-                message += f"📊 **Results:**\n"
-                message += f"✅ Processed: {processed}\n"
-                message += f"❌ Failed: {failed}\n"
-                message += f"⏭️ Skipped: {skipped}\n"
-                message += f"📁 Total: {total}\n\n"
+                message = get_text("auto_complete", language) + "\n\n"
+                message += get_text("auto_results", language) + "\n"
+                message += get_text("auto_processed", language, processed) + "\n"
+                message += get_text("auto_failed", language, failed) + "\n"
+                message += get_text("auto_skipped", language, skipped) + "\n"
+                message += get_text("auto_total", language, total) + "\n\n"
 
                 if processed > 0:
-                    message += (
-                        "🎉 Successfully auto-processed audiobooks with ASIN tags!\n\n"
-                    )
+                    message += get_text("auto_success_message", language) + "\n\n"
 
                 if failed > 0:
-                    message += "⚠️ Some files failed (no ASIN tags found)\n\n"
+                    message += get_text("auto_failed_message", language) + "\n\n"
 
                 if skipped > 0:
-                    message += "⏭️ Some files were skipped (no longer exist)\n\n"
+                    message += get_text("auto_skipped_message", language) + "\n\n"
 
                 # Add details for failed files if any
                 if failed > 0:
-                    message += "**Failed Files:**\n"
+                    message += get_text("auto_failed_files", language) + "\n"
                     for result in data.get("results", []):
                         if result.get("status") == "failed":
-                            message += f"• {result.get('filename', 'unknown')} - {result.get('reason', 'Unknown error')}\n"
+                            message += (
+                                get_text(
+                                    "auto_failed_file_entry",
+                                    language,
+                                    result.get("filename", "unknown"),
+                                    result.get("reason", "Unknown error"),
+                                )
+                                + "\n"
+                            )
 
                 await update.message.reply_text(message, parse_mode="Markdown")
             else:
                 await update.message.reply_text(
-                    f"❌ Auto-processing failed: {data.get('message', 'Unknown error')}"
+                    get_text(
+                        "auto_error",
+                        language,
+                        data.get("message", get_text("error_unknown", language)),
+                    )
                 )
 
         except Exception as e:
