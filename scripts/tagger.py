@@ -37,30 +37,18 @@ class TagConstants:
 
     # iTunes custom tags
     ASIN = "----:com.apple.iTunes:ASIN"
-    ISBN = "----:com.apple.iTunes:ISBN"
     LANGUAGE = "----:com.apple.iTunes:LANGUAGE"
     FORMAT = "----:com.apple.iTunes:FORMAT"
-    PUBLISHER = "----:com.apple.iTunes:PUBLISHER"
     SUBTITLE = "----:com.apple.iTunes:SUBTITLE"
     RELEASETIME = "----:com.apple.iTunes:RELEASETIME"
     ALBUMARTISTS = "----:com.apple.iTunes:ALBUMARTISTS"
     SERIES = "----:com.apple.iTunes:SERIES"
-    MOVEMENTNAME = "----:com.apple.iTunes:MOVEMENTNAME"
-    CONTENTGROUP = "----:com.apple.iTunes:CONTENTGROUP"
     SERIES_PART = "----:com.apple.iTunes:SERIES-PART"
-    MOVEMENT = "----:com.apple.iTunes:MOVEMENT"
-    SHOWMOVEMENT = "----:com.apple.iTunes:SHOWMOVEMENT"
-    DESCRIPTION = "----:com.apple.iTunes:DESCRIPTION"
     RATING = "----:com.apple.iTunes:RATING"
     RATING_WMP = "----:com.apple.iTunes:RATING WMP"
     EXPLICIT = "----:com.apple.iTunes:EXPLICIT"
-    ITUNESADVISORY = "----:com.apple.iTunes:ITUNESADVISORY"
-    ITUNESGAPLESS = "----:com.apple.iTunes:ITUNESGAPLESS"
-    ITUNESMEDIATYPE = "----:com.apple.iTunes:ITUNESMEDIATYPE"
     WWWAUDIOFILE = "----:com.apple.iTunes:WWWAUDIOFILE"
     AUDIBLE_ASIN = "----:com.apple.iTunes:AUDIBLE_ASIN"
-    TMP_GENRE1 = "----:com.apple.iTunes:TMP_GENRE1"
-    TMP_GENRE2 = "----:com.apple.iTunes:TMP_GENRE2"
 
     # Alternative tags for compatibility
     ALBUM_SORT = "soal"
@@ -308,7 +296,6 @@ class AudibleTagger:
             else:
                 opf_content += "\n        <dc:date></dc:date>"
 
-            opf_content += f'\n        <dc:identifier opf:scheme="ISBN">{escape(isbn)}</dc:identifier>'
             opf_content += f'\n        <dc:identifier opf:scheme="ASIN">{metadata.get("asin", "")}</dc:identifier>'
 
             # Add narrator if available
@@ -416,7 +403,6 @@ class AudibleTagger:
                 format="%(asctime)s - %(levelname)s - %(message)s",
                 handlers=[
                     logging.FileHandler(log_file),
-                    # Remove console handler to reduce output
                 ],
             )
             self.logger = logging.getLogger(__name__)
@@ -451,7 +437,6 @@ class AudibleTagger:
             log_level = getattr(logging, log_level_str, logging.INFO)
             logging.getLogger().setLevel(log_level)
             self.logger.setLevel(log_level)
-            # Remove log level update message
 
     def parse_filename(self, filename: str) -> Tuple[str, str]:
         """Parse filename to extract title and author"""
@@ -747,7 +732,6 @@ class AudibleTagger:
             if "product_extended_attrs" in product:
                 ext_attrs = product["product_extended_attrs"]
                 details["copyright"] = ext_attrs.get("copyright", "")
-                details["isbn"] = ext_attrs.get("isbn", "")
 
             return details
 
@@ -865,19 +849,12 @@ class AudibleTagger:
         if metadata.get("asin"):
             tags[TagConstants.ASIN] = self._ensure_string(metadata["asin"])
 
-        if metadata.get("isbn"):
-            tags[TagConstants.ISBN] = self._ensure_string(metadata["isbn"])
 
         if metadata.get("language"):
             tags[TagConstants.LANGUAGE] = self._ensure_string(metadata["language"])
 
         if metadata.get("format_type"):
             tags[TagConstants.FORMAT] = self._ensure_string(metadata["format_type"])
-
-        if metadata.get("publisher_name"):
-            tags[TagConstants.PUBLISHER] = self._ensure_string(
-                metadata["publisher_name"]
-            )
 
         if metadata.get("subtitle"):
             tags[TagConstants.SUBTITLE] = self._ensure_string(metadata["subtitle"])
@@ -992,24 +969,16 @@ class AudibleTagger:
             series_name = self._ensure_string(metadata.get("series", ""))
             series_part = self._ensure_string(metadata.get("series_part", ""))
 
-            # Set SHOWMOVEMENT to 1 if series exists
-            tags[TagConstants.SHOWMOVEMENT] = "1"  # SHOWMOVEMENT
             tags[TagConstants.SHOW_MOVEMENT_ALT] = "1"  # Alternative show movement tag
 
             # Set series tags
             if series_name:
                 tags[TagConstants.SERIES] = series_name  # SERIES
-                tags[TagConstants.MOVEMENTNAME] = series_name  # MOVEMENTNAME
 
                 if series_part:
                     # Series with part number
-                    content_group = f"{series_name}, Book #{series_part}"
-                    tags[TagConstants.CONTENTGROUP] = content_group  # CONTENTGROUP
                     tags[TagConstants.SERIES_PART] = series_part  # SERIES-PART
-                    tags[TagConstants.MOVEMENT] = series_part  # MOVEMENT
-                else:
-                    # Series without part number
-                    tags[TagConstants.CONTENTGROUP] = series_name  # CONTENTGROUP
+              
 
         return tags
 
@@ -1021,9 +990,6 @@ class AudibleTagger:
         if cleaned_description:
             tags[TagConstants.COMMENT] = (
                 cleaned_description  # COMMENT (Publisher's Summary for MP3)
-            )
-            tags[TagConstants.DESCRIPTION] = (
-                cleaned_description  # DESCRIPTION (Publisher's Summary for M4B)
             )
             tags[TagConstants.DESC_ALT] = (
                 cleaned_description  # Alternative description tag
@@ -1046,10 +1012,7 @@ class AudibleTagger:
                 tags[TagConstants.GENRE] = metadata["genres"][
                     0
                 ]  # GENRE (first genre only)
-                if len(metadata["genres"]) > 1:
-                    tags[TagConstants.TMP_GENRE1] = metadata["genres"][1]  # TMP_GENRE1
-                if len(metadata["genres"]) > 2:
-                    tags[TagConstants.TMP_GENRE2] = metadata["genres"][2]  # TMP_GENRE2
+               
             else:
                 # Multiple genres with delimiter
                 delimiter = self.config.get("genre_delimiter", "/")
@@ -1077,14 +1040,8 @@ class AudibleTagger:
 
         if metadata.get("is_adult_product"):
             tags[TagConstants.EXPLICIT] = "1"  # EXPLICIT (Set to 1 if adult content)
-            tags[TagConstants.ITUNESADVISORY] = (
-                "1"  # ITUNESADVISORY (Set to 1 if adult content for M4B)
-            )
         else:
             tags[TagConstants.EXPLICIT] = "0"  # EXPLICIT (Set to 0 if clean)
-            tags[TagConstants.ITUNESADVISORY] = (
-                "2"  # ITUNESADVISORY (Set to 2 if clean for M4B)
-            )
 
         return tags
 
@@ -1092,10 +1049,6 @@ class AudibleTagger:
         """Build iTunes specific tags"""
         tags = {}
 
-        tags[TagConstants.ITUNESGAPLESS] = "1"  # ITUNESGAPLESS (M4B Gapless album = 1)
-        tags[TagConstants.ITUNESMEDIATYPE] = (
-            "Audiobook"  # ITUNESMEDIATYPE (M4B Media type = Audiobook)
-        )
         tags[TagConstants.GAPLESS_ALT] = "True"  # Alternative gapless tag
         tags[TagConstants.STICK] = "2"  # Audiobook stick
 
@@ -1196,16 +1149,6 @@ class AudibleTagger:
             else:
                 tags["\xa9ART"] = self._ensure_string(metadata["narrator"])
 
-        # Set MOVEMENTNAME and MOVEMENT tags (these are set in Audible API.inc)
-        if metadata.get("series"):
-            tags[TagConstants.MOVEMENTNAME] = self._ensure_string(
-                metadata["series"]
-            )  # MOVEMENTNAME = SERIES
-            if metadata.get("series_part"):
-                tags[TagConstants.MOVEMENT] = self._ensure_string(
-                    metadata["series_part"]
-                )  # MOVEMENT = SERIES-PART
-
         return tags
 
     def tag_with_mutagen(
@@ -1213,15 +1156,9 @@ class AudibleTagger:
     ) -> bool:
         """Tag using mutagen with comprehensive metadata matching Mp3tag Audible API Web Source"""
         try:
+
             # Load the M4B file
-            audio = MP4(str(file_path))
-
-            # Clear all existing tags before applying new ones
-            if audio.tags:
-                audio.tags.clear()
-
-            self.logger.debug(f"Cleared existing tags: {audio.tags}")
-
+            audio = MP4(file_path)
             # Build comprehensive metadata dictionary using helper methods
             tags = {}
 
