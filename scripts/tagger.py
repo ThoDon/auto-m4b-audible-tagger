@@ -114,6 +114,7 @@ class AudibleTagger:
             "add_single_album_artist_only": True,
             "add_single_genre_only": False,
             "genre_delimiter": "/",
+            "auto_tag_enabled": False,  # New: Enable auto-tagging
         }
 
         try:
@@ -849,7 +850,6 @@ class AudibleTagger:
         if metadata.get("asin"):
             tags[TagConstants.ASIN] = self._ensure_string(metadata["asin"])
 
-
         if metadata.get("language"):
             tags[TagConstants.LANGUAGE] = self._ensure_string(metadata["language"])
 
@@ -978,7 +978,6 @@ class AudibleTagger:
                 if series_part:
                     # Series with part number
                     tags[TagConstants.SERIES_PART] = series_part  # SERIES-PART
-              
 
         return tags
 
@@ -1012,7 +1011,7 @@ class AudibleTagger:
                 tags[TagConstants.GENRE] = metadata["genres"][
                     0
                 ]  # GENRE (first genre only)
-               
+
             else:
                 # Multiple genres with delimiter
                 delimiter = self.config.get("genre_delimiter", "/")
@@ -1608,12 +1607,109 @@ class AudibleTagger:
         # Process each file
         processed = 0
         for file_path in tqdm(m4b_files, desc="Processing files"):
-            if self.process_file(file_path):
+            if self.process_file_with_auto_fallback(file_path):
                 processed += 1
 
         print(f"\n{Fore.GREEN}🎉 Processing complete!{Style.RESET_ALL}")
         print(f"Successfully processed: {processed}/{len(m4b_files)} files")
         print(f"Check the library directory for organized files.")
+
+    def extract_asin_from_file(self, file_path: Path) -> Optional[str]:
+        """Extract ASIN from existing tags in an M4B file"""
+        try:
+            audio = MP4(file_path)
+            if not audio.tags:
+                return None
+
+            # Check for ASIN in various possible tag locations
+            asin_candidates = [
+                TagConstants.ASIN,  # Primary ASIN tag
+                TagConstants.AUDIBLE_ASIN,  # Audible ASIN tag
+                TagConstants.SIMPLE_ASIN,  # Simple ASIN tag
+                TagConstants.CDEK_ASIN,  # Alternative ASIN tag
+            ]
+
+            for tag_name in asin_candidates:
+                if tag_name in audio.tags:
+                    asin_value = audio.tags[tag_name]
+                    if isinstance(asin_value, list) and len(asin_value) > 0:
+                        # Handle MP4FreeForm objects
+                        if hasattr(asin_value[0], "decode"):
+                            asin = asin_value[0].decode("utf-8", errors="replace")
+                        else:
+                            asin = str(asin_value[0])
+
+                        # Clean up the ASIN value
+                        asin = asin.strip()
+                        if (
+                            asin and len(asin) >= 10
+                        ):  # ASINs are typically 10 characters
+                            self.logger.info(f"Found ASIN in {file_path.name}: {asin}")
+                            return asin
+
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"Error extracting ASIN from {file_path}: {e}")
+            return None
+
+    def auto_process_file(self, file_path: Path) -> bool:
+        """Automatically process a file if it has an ASIN tag"""
+        try:
+            # Extract ASIN from existing tags
+            asin = self.extract_asin_from_file(file_path)
+            if not asin:
+                return False
+
+            self.logger.info(f"Auto-processing {file_path.name} with ASIN: {asin}")
+
+            # Get book details using the ASIN
+            book_data = self.get_book_details(
+                asin, self.config.get("preferred_locale", "com")
+            )
+            if not book_data:
+                self.logger.error(f"Failed to get book details for ASIN: {asin}")
+                return False
+
+            # Download cover
+            cover_path = None
+            if book_data.get("cover_url"):
+                cover_path = self.download_cover(
+                    book_data["cover_url"], book_data["asin"]
+                )
+
+            # Tag the file
+            if self.tag_file(file_path, book_data, cover_path):
+                # Move to library
+                self.move_to_library(file_path, book_data, cover_path)
+                self.logger.info(f"Successfully auto-processed: {file_path.name}")
+                return True
+            else:
+                self.logger.error(
+                    f"Failed to tag file during auto-processing: {file_path}"
+                )
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error in auto-processing for {file_path}: {e}")
+            import traceback
+
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
+            return False
+
+    def process_file_with_auto_fallback(self, file_path: Path) -> bool:
+        """Process a file with auto-tagging fallback - try auto first, then interactive if no ASIN"""
+        # First try auto-processing
+        if self.config.get("auto_tag_enabled", False):
+            if self.auto_process_file(file_path):
+                return True
+            else:
+                self.logger.info(
+                    f"Auto-processing failed for {file_path.name}, falling back to interactive mode"
+                )
+
+        # Fall back to interactive processing
+        return self.process_file(file_path)
 
 
 if __name__ == "__main__":

@@ -5,5 +5,6 @@
   "create_additional_metadata": true,
   "exclude_translators": true,
   "output_single_author": false,
-  "log_level": "WARNING"
+  "log_level": "WARNING",
+  "auto_tag_enabled": false
 }
