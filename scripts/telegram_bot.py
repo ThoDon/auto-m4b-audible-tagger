@@ -818,6 +818,14 @@ class AudiobookTelegramBot:
                 if skipped > 0:
                     message += get_text("auto_skipped_message", language) + "\n\n"
 
+                # Add details for processed files
+                if processed > 0:
+                    message += get_text("auto_processed_files", language) + "\n"
+                    for result in data.get("results", []):
+                        if result.get("status") == "processed":
+                            message += f"✅ {result.get('filename', 'unknown')}\n"
+                    message += "\n"
+
                 # Add details for failed files if any
                 if failed > 0:
                     message += get_text("auto_failed_files", language) + "\n"

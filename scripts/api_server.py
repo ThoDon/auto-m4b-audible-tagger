@@ -617,6 +617,10 @@ class AudiobookAPI:
             try:
                 # Get all pending audiobooks
                 audiobooks = self.db.get_all_audiobooks(status="pending")
+                self.logger.info(
+                    f"Found {len(audiobooks)} pending audiobooks for auto-processing"
+                )
+
                 if not audiobooks:
                     return jsonify(
                         {
@@ -625,6 +629,7 @@ class AudiobookAPI:
                             "processed": 0,
                             "failed": 0,
                             "skipped": 0,
+                            "total": 0,
                             "results": [],
                         }
                     )
@@ -637,14 +642,20 @@ class AudiobookAPI:
                 for audiobook in audiobooks:
                     file_id = audiobook["file_id"]
                     file_path = Path(audiobook["file_path"])
+                    filename = audiobook.get(
+                        "file_name", audiobook.get("filename", "unknown")
+                    )
+
+                    self.logger.info(f"Processing file: {filename} (ID: {file_id})")
 
                     if not file_path.exists():
                         # File no longer exists, skip
+                        self.logger.warning(f"File no longer exists: {file_path}")
                         skipped_count += 1
                         results.append(
                             {
                                 "file_id": file_id,
-                                "filename": audiobook.get("filename", "unknown"),
+                                "filename": filename,
                                 "status": "skipped",
                                 "reason": "File no longer exists",
                             }
@@ -654,9 +665,13 @@ class AudiobookAPI:
                     try:
                         # Update status to processing
                         self.db.update_audiobook_status(file_id, "processing")
+                        self.logger.info(f"Attempting auto-processing for: {filename}")
 
                         # Try auto-processing
                         success = self.tagger.auto_process_file(file_path)
+                        self.logger.info(
+                            f"Auto-processing result for {filename}: {'SUCCESS' if success else 'FAILED'}"
+                        )
 
                         if success:
                             # Get the ASIN that was used for processing
@@ -674,7 +689,7 @@ class AudiobookAPI:
                             results.append(
                                 {
                                     "file_id": file_id,
-                                    "filename": audiobook.get("filename", "unknown"),
+                                    "filename": filename,
                                     "status": "processed",
                                     "asin": asin,
                                     "auto_processed": True,
@@ -692,7 +707,7 @@ class AudiobookAPI:
                             results.append(
                                 {
                                     "file_id": file_id,
-                                    "filename": audiobook.get("filename", "unknown"),
+                                    "filename": filename,
                                     "status": "failed",
                                     "reason": "No ASIN found in file tags",
                                 }
@@ -717,7 +732,7 @@ class AudiobookAPI:
                         results.append(
                             {
                                 "file_id": file_id,
-                                "filename": audiobook.get("filename", "unknown"),
+                                "filename": filename,
                                 "status": "failed",
                                 "reason": str(auto_error),
                                 "error_type": type(auto_error).__name__,
@@ -726,6 +741,10 @@ class AudiobookAPI:
 
                 # Run cleanup after batch processing
                 self.run_cleanup()
+
+                self.logger.info(
+                    f"Batch auto-processing completed: {processed_count} processed, {failed_count} failed, {skipped_count} skipped"
+                )
 
                 return jsonify(
                     {
