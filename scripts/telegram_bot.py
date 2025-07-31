@@ -429,6 +429,13 @@ class AudiobookTelegramBot:
                             get_text("search_narrated_by", language, result["narrator"])
                             + "\n"
                         )
+                    if result.get("series"):
+                        series_text = result["series"]
+                        if result.get("series_part"):
+                            series_text += f" #{result['series_part']}"
+                        message += (
+                            get_text("search_series", language, series_text) + "\n"
+                        )
                     message += (
                         get_text("search_asin", language, result["asin"]) + "\n\n"
                     )
@@ -591,6 +598,13 @@ class AudiobookTelegramBot:
                                     "search_narrated_by", language, result["narrator"]
                                 )
                                 + "\n"
+                            )
+                        if result.get("series"):
+                            series_text = result["series"]
+                            if result.get("series_part"):
+                                series_text += f" #{result['series_part']}"
+                            message += (
+                                get_text("search_series", language, series_text) + "\n"
                             )
                         message += (
                             get_text("search_asin", language, result["asin"]) + "\n\n"
