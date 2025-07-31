@@ -1653,13 +1653,13 @@ class AudibleTagger:
             self.logger.warning(f"Error extracting ASIN from {file_path}: {e}")
             return None
 
-    def auto_process_file(self, file_path: Path) -> bool:
-        """Automatically process a file if it has an ASIN tag"""
+    def auto_process_file(self, file_path: Path) -> tuple[bool, Optional[str]]:
+        """Automatically process a file if it has an ASIN tag. Returns (success, asin)"""
         try:
             # Extract ASIN from existing tags
             asin = self.extract_asin_from_file(file_path)
             if not asin:
-                return False
+                return False, None
 
             self.logger.info(f"Auto-processing {file_path.name} with ASIN: {asin}")
 
@@ -1669,7 +1669,7 @@ class AudibleTagger:
             )
             if not book_data:
                 self.logger.error(f"Failed to get book details for ASIN: {asin}")
-                return False
+                return False, None
 
             # Download cover
             cover_path = None
@@ -1683,25 +1683,26 @@ class AudibleTagger:
                 # Move to library
                 self.move_to_library(file_path, book_data, cover_path)
                 self.logger.info(f"Successfully auto-processed: {file_path.name}")
-                return True
+                return True, asin
             else:
                 self.logger.error(
                     f"Failed to tag file during auto-processing: {file_path}"
                 )
-                return False
+                return False, None
 
         except Exception as e:
             self.logger.error(f"Error in auto-processing for {file_path}: {e}")
             import traceback
 
             self.logger.error(f"Full traceback: {traceback.format_exc()}")
-            return False
+            return False, None
 
     def process_file_with_auto_fallback(self, file_path: Path) -> bool:
         """Process a file with auto-tagging fallback - try auto first, then interactive if no ASIN"""
         # First try auto-processing
         if self.config.get("auto_tag_enabled", False):
-            if self.auto_process_file(file_path):
+            success, _ = self.auto_process_file(file_path)
+            if success:
                 return True
             else:
                 self.logger.info(

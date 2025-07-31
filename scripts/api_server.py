@@ -676,15 +676,12 @@ class AudiobookAPI:
                         self.logger.info(f"Attempting auto-processing for: {filename}")
 
                         # Try auto-processing
-                        success = self.tagger.auto_process_file(file_path)
+                        success, asin = self.tagger.auto_process_file(file_path)
                         self.logger.info(
                             f"Auto-processing result for {filename}: {'SUCCESS' if success else 'FAILED'}"
                         )
 
                         if success:
-                            # Get the ASIN that was used for processing
-                            asin = self.tagger.extract_asin_from_file(file_path)
-
                             # Update database with success
                             self.db.update_audiobook_status(
                                 file_id,
