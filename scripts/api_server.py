@@ -779,6 +779,220 @@ class AudiobookAPI:
                     500,
                 )
 
+        @self.app.route("/audiobooks/auto/batch/progressive", methods=["POST"])
+        def progressive_batch_auto_process_audiobooks():
+            """Process one audiobook at a time and return progress updates"""
+            try:
+                # Get request data
+                data = request.get_json() or {}
+                current_index = data.get("current_index", 0)
+
+                # Get all pending audiobooks
+                audiobooks = self.db.get_all_audiobooks(status="pending")
+                self.logger.info(
+                    f"Found {len(audiobooks)} pending audiobooks for progressive auto-processing"
+                )
+
+                if not audiobooks:
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "message": "No pending audiobooks found",
+                            "completed": True,
+                            "processed": 0,
+                            "failed": 0,
+                            "skipped": 0,
+                            "total": 0,
+                            "current_index": 0,
+                            "results": [],
+                        }
+                    )
+
+                # Check if we've processed all books
+                if current_index >= len(audiobooks):
+                    # Run cleanup after batch processing
+                    self.run_cleanup()
+
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "message": "Progressive batch auto-processing completed",
+                            "completed": True,
+                            "processed": data.get("processed_count", 0),
+                            "failed": data.get("failed_count", 0),
+                            "skipped": data.get("skipped_count", 0),
+                            "total": len(audiobooks),
+                            "current_index": current_index,
+                            "results": data.get("results", []),
+                        }
+                    )
+
+                # Process the current book
+                audiobook = audiobooks[current_index]
+                file_id = audiobook["file_id"]
+                file_path = Path(audiobook["file_path"])
+                filename = audiobook.get(
+                    "file_name", audiobook.get("filename", "unknown")
+                )
+
+                self.logger.info(
+                    f"Processing file {current_index + 1}/{len(audiobooks)}: {filename} (ID: {file_id})"
+                )
+
+                result = {
+                    "file_id": file_id,
+                    "filename": filename,
+                    "current_index": current_index,
+                    "total": len(audiobooks),
+                }
+
+                if not file_path.exists():
+                    # File no longer exists, skip
+                    self.logger.warning(f"File no longer exists: {file_path}")
+                    result.update(
+                        {
+                            "status": "skipped",
+                            "reason": "File no longer exists",
+                        }
+                    )
+
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "message": f"Book {current_index + 1}/{len(audiobooks)} skipped",
+                            "completed": False,
+                            "current_result": result,
+                            "current_index": current_index,
+                            "total": len(audiobooks),
+                            "processed_count": data.get("processed_count", 0),
+                            "failed_count": data.get("failed_count", 0),
+                            "skipped_count": data.get("skipped_count", 0) + 1,
+                        }
+                    )
+
+                try:
+                    # Update status to processing
+                    self.db.update_audiobook_status(file_id, "processing")
+                    self.logger.info(f"Attempting auto-processing for: {filename}")
+
+                    # Try auto-processing
+                    success, asin = self.tagger.auto_process_file(file_path)
+                    self.logger.info(
+                        f"Auto-processing result for {filename}: {'SUCCESS' if success else 'FAILED'}"
+                    )
+
+                    if success:
+                        # Update database with success
+                        self.db.update_audiobook_status(
+                            file_id,
+                            "processed",
+                            metadata={"asin": asin, "auto_processed": True},
+                            final_path="auto_processed",
+                        )
+
+                        result.update(
+                            {
+                                "status": "processed",
+                                "asin": asin,
+                                "auto_processed": True,
+                            }
+                        )
+
+                        return jsonify(
+                            {
+                                "status": "success",
+                                "message": f"Book {current_index + 1}/{len(audiobooks)} processed successfully",
+                                "completed": False,
+                                "current_result": result,
+                                "current_index": current_index,
+                                "total": len(audiobooks),
+                                "processed_count": data.get("processed_count", 0) + 1,
+                                "failed_count": data.get("failed_count", 0),
+                                "skipped_count": data.get("skipped_count", 0),
+                            }
+                        )
+                    else:
+                        # Auto-processing failed - no ASIN found
+                        self.db.update_audiobook_status(
+                            file_id,
+                            "error",
+                            error_message="Auto-processing failed - no ASIN found",
+                        )
+
+                        result.update(
+                            {
+                                "status": "failed",
+                                "reason": "No ASIN found in file tags",
+                            }
+                        )
+
+                        return jsonify(
+                            {
+                                "status": "success",
+                                "message": f"Book {current_index + 1}/{len(audiobooks)} failed",
+                                "completed": False,
+                                "current_result": result,
+                                "current_index": current_index,
+                                "total": len(audiobooks),
+                                "processed_count": data.get("processed_count", 0),
+                                "failed_count": data.get("failed_count", 0) + 1,
+                                "skipped_count": data.get("skipped_count", 0),
+                            }
+                        )
+
+                except Exception as auto_error:
+                    self.logger.error(
+                        f"Error in auto-processing {file_id}: {auto_error}"
+                    )
+                    import traceback
+
+                    self.logger.error(
+                        f"Auto-processing error traceback: {traceback.format_exc()}"
+                    )
+                    self.db.update_audiobook_status(
+                        file_id,
+                        "error",
+                        error_message=f"Auto-processing error: {str(auto_error)}",
+                    )
+
+                    result.update(
+                        {
+                            "status": "failed",
+                            "reason": str(auto_error),
+                            "error_type": type(auto_error).__name__,
+                        }
+                    )
+
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "message": f"Book {current_index + 1}/{len(audiobooks)} failed with error",
+                            "completed": False,
+                            "current_result": result,
+                            "current_index": current_index,
+                            "total": len(audiobooks),
+                            "processed_count": data.get("processed_count", 0),
+                            "failed_count": data.get("failed_count", 0) + 1,
+                            "skipped_count": data.get("skipped_count", 0),
+                        }
+                    )
+
+            except Exception as e:
+                error_details = traceback.format_exc()
+                self.logger.error(f"Error in progressive batch auto-processing: {e}")
+                self.logger.error(f"Full traceback: {error_details}")
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": str(e),
+                            "error_type": type(e).__name__,
+                            "debug_info": error_details,
+                        }
+                    ),
+                    500,
+                )
+
         @self.app.route("/audiobooks/<file_id>/skip", methods=["POST"])
         def skip_audiobook(file_id: str):
             """Skip processing for a specific audiobook"""

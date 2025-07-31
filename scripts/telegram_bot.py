@@ -797,7 +797,7 @@ class AudiobookTelegramBot:
             )
 
     async def auto_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /auto command - batch auto-process all audiobooks"""
+        """Handle /auto command - progressive batch auto-process all audiobooks"""
         user_id = update.effective_user.id
         language = self.get_user_language(user_id)
 
@@ -805,65 +805,104 @@ class AudiobookTelegramBot:
             # Show processing message
             await update.message.reply_text(get_text("auto_start", language))
 
-            # Make batch auto-processing request
-            response = requests.post(f"{self.api_url}/audiobooks/auto/batch")
-            data = response.json()
+            # Start progressive batch processing
+            current_index = 0
+            processed_count = 0
+            failed_count = 0
+            skipped_count = 0
+            results = []
 
-            if data["status"] == "success":
-                processed = data.get("processed", 0)
-                failed = data.get("failed", 0)
-                skipped = data.get("skipped", 0)
-                total = data.get("total", 0)
+            while True:
+                # Make progressive batch auto-processing request
+                response = requests.post(
+                    f"{self.api_url}/audiobooks/auto/batch/progressive",
+                    json={
+                        "current_index": current_index,
+                        "processed_count": processed_count,
+                        "failed_count": failed_count,
+                        "skipped_count": skipped_count,
+                        "results": results,
+                    },
+                )
+                data = response.json()
 
-                # Build success message
-                message = get_text("auto_complete", language) + "\n\n"
-                message += get_text("auto_results", language) + "\n"
-                message += get_text("auto_processed", language, processed) + "\n"
-                message += get_text("auto_failed", language, failed) + "\n"
-                message += get_text("auto_skipped", language, skipped) + "\n"
-                message += get_text("auto_total", language, total) + "\n\n"
+                if data["status"] == "success":
+                    if data.get("completed", False):
+                        # Batch processing completed
+                        processed = data.get("processed", processed_count)
+                        failed = data.get("failed", failed_count)
+                        skipped = data.get("skipped", skipped_count)
+                        total = data.get("total", 0)
 
-                if processed > 0:
-                    message += get_text("auto_success_message", language) + "\n\n"
+                        # Build final success message
+                        message = get_text("auto_complete", language) + "\n\n"
+                        message += get_text("auto_results", language) + "\n"
+                        message += (
+                            get_text("auto_processed", language, processed) + "\n"
+                        )
+                        message += get_text("auto_failed", language, failed) + "\n"
+                        message += get_text("auto_skipped", language, skipped) + "\n"
+                        message += get_text("auto_total", language, total) + "\n\n"
 
-                if failed > 0:
-                    message += get_text("auto_failed_message", language) + "\n\n"
-
-                if skipped > 0:
-                    message += get_text("auto_skipped_message", language) + "\n\n"
-
-                # Add details for processed files
-                if processed > 0:
-                    message += get_text("auto_processed_files", language) + "\n"
-                    for result in data.get("results", []):
-                        if result.get("status") == "processed":
-                            message += f"✅ {result.get('filename', 'unknown')}\n"
-                    message += "\n"
-
-                # Add details for failed files if any
-                if failed > 0:
-                    message += get_text("auto_failed_files", language) + "\n"
-                    for result in data.get("results", []):
-                        if result.get("status") == "failed":
+                        if processed > 0:
                             message += (
-                                get_text(
-                                    "auto_failed_file_entry",
-                                    language,
-                                    result.get("filename", "unknown"),
-                                    result.get("reason", "Unknown error"),
-                                )
-                                + "\n"
+                                get_text("auto_success_message", language) + "\n\n"
                             )
 
-                await update.message.reply_text(message, parse_mode="Markdown")
-            else:
-                await update.message.reply_text(
-                    get_text(
-                        "auto_error",
-                        language,
-                        data.get("message", get_text("error_unknown", language)),
+                        if failed > 0:
+                            message += (
+                                get_text("auto_failed_message", language) + "\n\n"
+                            )
+
+                        if skipped > 0:
+                            message += (
+                                get_text("auto_skipped_message", language) + "\n\n"
+                            )
+
+                        await update.message.reply_text(message, parse_mode="Markdown")
+                        break
+                    else:
+                        # Process current book result
+                        current_result = data.get("current_result", {})
+                        current_index = data.get("current_index", 0)
+                        total = data.get("total", 0)
+
+                        # Update counters
+                        if current_result.get("status") == "processed":
+                            processed_count += 1
+                        elif current_result.get("status") == "failed":
+                            failed_count += 1
+                        elif current_result.get("status") == "skipped":
+                            skipped_count += 1
+
+                        results.append(current_result)
+
+                        # Send progress update
+                        progress_message = self._build_progress_message(
+                            current_result,
+                            current_index,
+                            total,
+                            processed_count,
+                            failed_count,
+                            skipped_count,
+                            language,
+                        )
+
+                        await update.message.reply_text(
+                            progress_message, parse_mode="Markdown"
+                        )
+
+                        # Move to next book
+                        current_index += 1
+                else:
+                    await update.message.reply_text(
+                        get_text(
+                            "auto_error",
+                            language,
+                            data.get("message", get_text("error_unknown", language)),
+                        )
                     )
-                )
+                    break
 
         except Exception as e:
             self.logger.error(f"Error in auto command: {e}")
@@ -872,6 +911,54 @@ class AudiobookTelegramBot:
             await update.message.reply_text(
                 f"❌ Error during auto-processing: {str(e)}"
             )
+
+    def _build_progress_message(
+        self,
+        result,
+        current_index,
+        total,
+        processed_count,
+        failed_count,
+        skipped_count,
+        language,
+    ):
+        """Build a progress message for a single book processing result"""
+        filename = result.get("filename", "unknown")
+        status = result.get("status", "unknown")
+
+        # Build progress header
+        message = (
+            get_text("auto_progress_book", language, current_index + 1, total) + "\n"
+        )
+        message += get_text("auto_progress_filename", language, filename) + "\n\n"
+
+        # Add status-specific message
+        if status == "processed":
+            asin = result.get("asin", "unknown")
+            message += get_text("auto_progress_success", language) + "\n"
+            message += get_text("auto_progress_asin", language, asin) + "\n"
+        elif status == "failed":
+            reason = result.get("reason", "Unknown error")
+            message += get_text("auto_progress_failed", language) + "\n"
+            message += get_text("auto_progress_reason", language, reason) + "\n"
+        elif status == "skipped":
+            reason = result.get("reason", "Unknown reason")
+            message += get_text("auto_progress_skipped", language) + "\n"
+            message += get_text("auto_progress_skipped_reason", language, reason) + "\n"
+
+        # Add progress summary
+        message += f"\n{get_text('auto_progress_summary', language)}\n"
+        message += get_text("auto_progress_processed", language, processed_count) + "\n"
+        message += get_text("auto_progress_failed_count", language, failed_count) + "\n"
+        message += (
+            get_text("auto_progress_skipped_count", language, skipped_count) + "\n"
+        )
+        message += (
+            get_text("auto_progress_remaining", language, total - (current_index + 1))
+            + "\n"
+        )
+
+        return message
 
     def run(self):
         """Run the Telegram bot"""
