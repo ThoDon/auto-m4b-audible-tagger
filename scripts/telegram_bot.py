@@ -167,8 +167,7 @@ class AudiobookTelegramBot:
 {get_text('welcome_title', language)}
 
 {get_text('welcome_commands', language)}
-{get_text('welcome_list', language)}
-{get_text('welcome_auto', language)}"""
+{get_text('welcome_list', language)}"""
 
         # Add conditional commands
         if self.n8n_webhook_url:

@@ -13,7 +13,6 @@ TRANSLATIONS = {
         "welcome_getnewreleases": "/getnewreleases - Trigger new releases workflow",
         "welcome_help": "The bot will help you manage your audiobook processing workflow!",
         "welcome_buttons": "Use the buttons in the list to search, process, or skip audiobooks.",
-        "welcome_auto": "/auto - Auto-process all audiobooks with ASIN tags",
         # List command
         "list_no_books": "📚 No pending audiobooks found.",
         "list_found_books": "📚 Found {} pending audiobook(s):",
@@ -107,7 +106,6 @@ TRANSLATIONS = {
         "welcome_getnewreleases": "/getnewreleases - Déclencher le workflow des nouvelles sorties",
         "welcome_help": "Le bot vous aidera à gérer votre workflow de traitement d'audiobooks !",
         "welcome_buttons": "Utilisez les boutons dans la liste pour rechercher, traiter ou ignorer les audiobooks.",
-        "welcome_auto": "/auto - Traitement automatique de tous les audiobooks avec des étiquettes ASIN",
         # List command
         "list_no_books": "📚 Aucun audiobook en attente trouvé.",
         "list_found_books": "📚 {} audiobook(s) en attente trouvé(s) :",
@@ -201,7 +199,6 @@ TRANSLATIONS = {
         "welcome_getnewreleases": "/getnewreleases - Activar flujo de trabajo de nuevos lanzamientos",
         "welcome_help": "¡El bot te ayudará a gestionar tu flujo de trabajo de procesamiento de audiolibros!",
         "welcome_buttons": "Usa los botones en la lista para buscar, procesar o saltar audiolibros.",
-        "welcome_auto": "/auto - Procesar automáticamente todos los audiolibros con etiquetas ASIN",
         # List command
         "list_no_books": "📚 No se encontraron audiolibros pendientes.",
         "list_found_books": "📚 Se encontraron {} audiolibro(s) pendiente(s):",
@@ -295,7 +292,6 @@ TRANSLATIONS = {
         "welcome_getnewreleases": "/getnewreleases - Attiva flusso di lavoro nuove uscite",
         "welcome_help": "Il bot ti aiuterà a gestire il tuo flusso di lavoro di elaborazione audiolibri!",
         "welcome_buttons": "Usa i pulsanti nella lista per cercare, elaborare o saltare audiolibri.",
-        "welcome_auto": "/auto - Elabora automaticamente tutti gli audiolibri con etichette ASIN",
         # List command
         "list_no_books": "📚 Nessun audiolibro in attesa trovato.",
         "list_found_books": "📚 Trovati {} audiolibro/i in attesa:",
@@ -389,7 +385,6 @@ TRANSLATIONS = {
         "welcome_getnewreleases": "/getnewreleases - Neue Veröffentlichungen Workflow auslösen",
         "welcome_help": "Der Bot hilft Ihnen bei der Verwaltung Ihres Hörbuch-Verarbeitungs-Workflows!",
         "welcome_buttons": "Verwenden Sie die Schaltflächen in der Liste, um Hörbücher zu suchen, zu verarbeiten oder zu überspringen.",
-        "welcome_auto": "/auto - Automatisches Verarbeiten aller Hörbücher mit ASIN-Tags",
         # List command
         "list_no_books": "📚 Keine ausstehenden Hörbücher gefunden.",
         "list_found_books": "📚 {} ausstehende(s) Hörbuch(e) gefunden:",

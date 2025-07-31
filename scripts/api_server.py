@@ -616,7 +616,7 @@ class AudiobookAPI:
             """Automatically process all audiobooks that have ASIN tags"""
             try:
                 # Get all pending audiobooks
-                audiobooks = self.db.get_audiobooks_by_status("pending")
+                audiobooks = self.db.get_all_audiobooks(status="pending")
                 if not audiobooks:
                     return jsonify(
                         {
