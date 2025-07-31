@@ -165,7 +165,8 @@ class AudiobookAPI:
         @self.app.route("/health", methods=["GET"])
         def health_check():
             """Health check endpoint"""
-            self.logger.info("Health check requested")
+            # Only log health checks at DEBUG level to reduce noise
+            self.logger.debug("Health check requested")
             return jsonify(
                 {
                     "status": "healthy",
@@ -524,6 +525,9 @@ class AudiobookAPI:
                                 {
                                     "status": "error",
                                     "message": f"Failed to tag file: {file_id}",
+                                    "filename": (
+                                        file_path.name if file_path else "unknown"
+                                    ),
                                 }
                             ),
                             500,
@@ -541,6 +545,7 @@ class AudiobookAPI:
                             {
                                 "status": "error",
                                 "message": f"Error tagging file: {str(tag_error)}",
+                                "filename": file_path.name if file_path else "unknown",
                                 "error_type": type(tag_error).__name__,
                             }
                         ),
@@ -569,8 +574,10 @@ class AudiobookAPI:
                         {
                             "status": "success",
                             "message": f"Successfully processed: {file_id}",
+                            "filename": file_path.name,
                             "original_path": str(file_path),
                             "final_path": str(result_path),
+                            "moved_to": str(result_path),
                             "metadata": details,
                             "selected_result": selected_result,
                         }
@@ -589,6 +596,7 @@ class AudiobookAPI:
                             {
                                 "status": "error",
                                 "message": f"Failed to move file to library: {str(e)}",
+                                "filename": file_path.name if file_path else "unknown",
                                 "error_type": type(e).__name__,
                             }
                         ),
@@ -814,6 +822,7 @@ class AudiobookAPI:
                     {
                         "status": "success",
                         "message": f"Skipped: {file_id}",
+                        "filename": file_path.name,
                         "moved_to": str(skipped_path),
                     }
                 )
@@ -827,6 +836,7 @@ class AudiobookAPI:
                         {
                             "status": "error",
                             "message": str(e),
+                            "filename": file_path.name if file_path else "unknown",
                             "error_type": type(e).__name__,
                             "debug_info": error_details,
                         }
