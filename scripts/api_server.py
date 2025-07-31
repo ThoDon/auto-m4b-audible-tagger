@@ -781,35 +781,28 @@ class AudiobookAPI:
 
         @self.app.route("/audiobooks/auto/batch/progressive", methods=["POST"])
         def progressive_batch_auto_process_audiobooks():
-            """Process one audiobook at a time and return progress updates"""
+            """Process one audiobook at a time using provided audiobooks list"""
             try:
                 # Get request data
                 data = request.get_json() or {}
                 current_index = data.get("current_index", 0)
-
-                # Get all pending audiobooks
-                audiobooks = self.db.get_all_audiobooks(status="pending")
-                self.logger.info(
-                    f"Found {len(audiobooks)} pending audiobooks for progressive auto-processing"
-                )
+                audiobooks = data.get("audiobooks", [])
 
                 if not audiobooks:
-                    return jsonify(
-                        {
-                            "status": "success",
-                            "message": "No pending audiobooks found",
-                            "completed": True,
-                            "processed": 0,
-                            "failed": 0,
-                            "skipped": 0,
-                            "total": 0,
-                            "current_index": 0,
-                            "results": [],
-                        }
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "message": "No audiobooks list provided",
+                            }
+                        ),
+                        400,
                     )
 
+                total_books = len(audiobooks)
+
                 # Check if we've processed all books
-                if current_index >= len(audiobooks):
+                if current_index >= total_books:
                     # Run cleanup after batch processing
                     self.run_cleanup()
 
@@ -821,7 +814,7 @@ class AudiobookAPI:
                             "processed": data.get("processed_count", 0),
                             "failed": data.get("failed_count", 0),
                             "skipped": data.get("skipped_count", 0),
-                            "total": len(audiobooks),
+                            "total": total_books,
                             "current_index": current_index,
                             "results": data.get("results", []),
                         }
@@ -836,14 +829,14 @@ class AudiobookAPI:
                 )
 
                 self.logger.info(
-                    f"Processing file {current_index + 1}/{len(audiobooks)}: {filename} (ID: {file_id})"
+                    f"Processing file {current_index + 1}/{total_books}: {filename} (ID: {file_id})"
                 )
 
                 result = {
                     "file_id": file_id,
                     "filename": filename,
                     "current_index": current_index,
-                    "total": len(audiobooks),
+                    "total": total_books,
                 }
 
                 if not file_path.exists():
@@ -859,11 +852,11 @@ class AudiobookAPI:
                     return jsonify(
                         {
                             "status": "success",
-                            "message": f"Book {current_index + 1}/{len(audiobooks)} skipped",
+                            "message": f"Book {current_index + 1}/{total_books} skipped",
                             "completed": False,
                             "current_result": result,
                             "current_index": current_index,
-                            "total": len(audiobooks),
+                            "total": total_books,
                             "processed_count": data.get("processed_count", 0),
                             "failed_count": data.get("failed_count", 0),
                             "skipped_count": data.get("skipped_count", 0) + 1,
@@ -901,11 +894,11 @@ class AudiobookAPI:
                         return jsonify(
                             {
                                 "status": "success",
-                                "message": f"Book {current_index + 1}/{len(audiobooks)} processed successfully",
+                                "message": f"Book {current_index + 1}/{total_books} processed successfully",
                                 "completed": False,
                                 "current_result": result,
                                 "current_index": current_index,
-                                "total": len(audiobooks),
+                                "total": total_books,
                                 "processed_count": data.get("processed_count", 0) + 1,
                                 "failed_count": data.get("failed_count", 0),
                                 "skipped_count": data.get("skipped_count", 0),
@@ -929,11 +922,11 @@ class AudiobookAPI:
                         return jsonify(
                             {
                                 "status": "success",
-                                "message": f"Book {current_index + 1}/{len(audiobooks)} failed",
+                                "message": f"Book {current_index + 1}/{total_books} failed",
                                 "completed": False,
                                 "current_result": result,
                                 "current_index": current_index,
-                                "total": len(audiobooks),
+                                "total": total_books,
                                 "processed_count": data.get("processed_count", 0),
                                 "failed_count": data.get("failed_count", 0) + 1,
                                 "skipped_count": data.get("skipped_count", 0),
@@ -966,11 +959,11 @@ class AudiobookAPI:
                     return jsonify(
                         {
                             "status": "success",
-                            "message": f"Book {current_index + 1}/{len(audiobooks)} failed with error",
+                            "message": f"Book {current_index + 1}/{total_books} failed with error",
                             "completed": False,
                             "current_result": result,
                             "current_index": current_index,
-                            "total": len(audiobooks),
+                            "total": total_books,
                             "processed_count": data.get("processed_count", 0),
                             "failed_count": data.get("failed_count", 0) + 1,
                             "skipped_count": data.get("skipped_count", 0),
@@ -980,6 +973,41 @@ class AudiobookAPI:
             except Exception as e:
                 error_details = traceback.format_exc()
                 self.logger.error(f"Error in progressive batch auto-processing: {e}")
+                self.logger.error(f"Full traceback: {error_details}")
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": str(e),
+                            "error_type": type(e).__name__,
+                            "debug_info": error_details,
+                        }
+                    ),
+                    500,
+                )
+
+        @self.app.route("/audiobooks/auto/batch/init", methods=["GET"])
+        def get_pending_audiobooks_for_batch():
+            """Get list of pending audiobooks for batch processing"""
+            try:
+                # Get all pending audiobooks
+                audiobooks = self.db.get_all_audiobooks(status="pending")
+                self.logger.info(
+                    f"Found {len(audiobooks)} pending audiobooks for batch processing"
+                )
+
+                return jsonify(
+                    {
+                        "status": "success",
+                        "message": f"Found {len(audiobooks)} pending audiobooks",
+                        "total": len(audiobooks),
+                        "audiobooks": audiobooks,
+                    }
+                )
+
+            except Exception as e:
+                error_details = traceback.format_exc()
+                self.logger.error(f"Error getting pending audiobooks: {e}")
                 self.logger.error(f"Full traceback: {error_details}")
                 return (
                     jsonify(

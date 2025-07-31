@@ -805,6 +805,27 @@ class AudiobookTelegramBot:
             # Show processing message
             await update.message.reply_text(get_text("auto_start", language))
 
+            # Get initial list of pending audiobooks
+            init_response = requests.get(f"{self.api_url}/audiobooks/auto/batch/init")
+            init_data = init_response.json()
+
+            if init_data["status"] != "success":
+                await update.message.reply_text(
+                    get_text(
+                        "auto_error",
+                        language,
+                        init_data.get("message", get_text("error_unknown", language)),
+                    )
+                )
+                return
+
+            audiobooks = init_data.get("audiobooks", [])
+            total = init_data.get("total", 0)
+
+            if total == 0:
+                await update.message.reply_text(get_text("list_no_books", language))
+                return
+
             # Start progressive batch processing
             current_index = 0
             processed_count = 0
@@ -822,6 +843,7 @@ class AudiobookTelegramBot:
                         "failed_count": failed_count,
                         "skipped_count": skipped_count,
                         "results": results,
+                        "audiobooks": audiobooks,
                     },
                 )
                 data = response.json()
@@ -832,7 +854,6 @@ class AudiobookTelegramBot:
                         processed = data.get("processed", processed_count)
                         failed = data.get("failed", failed_count)
                         skipped = data.get("skipped", skipped_count)
-                        total = data.get("total", 0)
 
                         # Build final success message
                         message = get_text("auto_complete", language) + "\n\n"
@@ -865,7 +886,6 @@ class AudiobookTelegramBot:
                         # Process current book result
                         current_result = data.get("current_result", {})
                         current_index = data.get("current_index", 0)
-                        total = data.get("total", 0)
 
                         # Update counters
                         if current_result.get("status") == "processed":
