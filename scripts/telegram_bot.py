@@ -205,13 +205,18 @@ class AudiobookTelegramBot:
                             "list_book_entry",
                             language,
                             i,
-                            book["parsed_title"],
-                            book["parsed_author"],
+                            self.escape_markdown(book["parsed_title"]),
+                            self.escape_markdown(book["parsed_author"]),
                         )
                         + "\n"
                     )
                     message += (
-                        get_text("list_file_info", language, book["filename"]) + "\n"
+                        get_text(
+                            "list_file_info",
+                            language,
+                            self.escape_markdown(book["filename"]),
+                        )
+                        + "\n"
                     )
                     message += get_text("list_id_info", language, book["id"]) + "\n\n"
 
@@ -233,15 +238,15 @@ class AudiobookTelegramBot:
 
                 reply_markup = InlineKeyboardMarkup(keyboard)
 
-                await update.message.reply_text(
-                    message, reply_markup=reply_markup, parse_mode="Markdown"
-                )
+                await self.safe_send_markdown(update.message, message, reply_markup)
             else:
                 await update.message.reply_text(
                     get_text(
                         "list_error",
                         language,
-                        data.get("message", get_text("error_unknown", language)),
+                        self.escape_markdown(
+                            data.get("message", get_text("error_unknown", language))
+                        ),
                     )
                 )
 
@@ -250,7 +255,7 @@ class AudiobookTelegramBot:
             error_details = traceback.format_exc()
             self.logger.error(f"Full traceback: {error_details}")
             await update.message.reply_text(
-                get_text("error_generic", language, str(e))
+                get_text("error_generic", language, self.escape_markdown(str(e)))
                 + "\n\n"
                 + get_text("error_debug_info", language, type(e).__name__)
             )
@@ -294,7 +299,7 @@ class AudiobookTelegramBot:
             error_details = traceback.format_exc()
             self.logger.error(f"Full traceback: {error_details}")
             await update.message.reply_text(
-                get_text("error_generic", language, str(e))
+                get_text("error_generic", language, self.escape_markdown(str(e)))
                 + "\n\n"
                 + get_text("error_debug_info", language, type(e).__name__)
             )
@@ -335,9 +340,7 @@ class AudiobookTelegramBot:
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.message.reply_text(
-            message, reply_markup=reply_markup, parse_mode="Markdown"
-        )
+        await self.safe_send_markdown(update.message, message, reply_markup)
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle inline button callbacks"""
@@ -379,11 +382,19 @@ class AudiobookTelegramBot:
                 if not results:
                     # No results found - offer custom search option
                     message = (
-                        get_text("search_no_results", language, data["filename"])
+                        get_text(
+                            "search_no_results",
+                            language,
+                            self.escape_markdown(data["filename"]),
+                        )
                         + "\n\n"
                     )
                     message += (
-                        get_text("search_query_used", language, data["search_query"])
+                        get_text(
+                            "search_query_used",
+                            language,
+                            self.escape_markdown(data["search_query"]),
+                        )
                         + "\n\n"
                     )
                     message += get_text("search_try_custom", language)
@@ -399,18 +410,27 @@ class AudiobookTelegramBot:
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
 
-                    await query.edit_message_text(
-                        message, reply_markup=reply_markup, parse_mode="Markdown"
+                    await self.safe_send_markdown(
+                        query, message, reply_markup, edit_message=True
                     )
                     return
 
                 # Create message with search results
                 message = (
-                    get_text("search_results_title", language, data["filename"])
+                    get_text(
+                        "search_results_title",
+                        language,
+                        self.escape_markdown(data["filename"]),
+                    )
                     + "\n\n"
                 )
                 message += (
-                    get_text("search_query", language, data["search_query"]) + "\n\n"
+                    get_text(
+                        "search_query",
+                        language,
+                        self.escape_markdown(data["search_query"]),
+                    )
+                    + "\n\n"
                 )
 
                 for i, result in enumerate(results, 1):
@@ -419,14 +439,18 @@ class AudiobookTelegramBot:
                             "search_result_entry",
                             language,
                             i,
-                            result["title"],
-                            result["author"],
+                            self.escape_markdown(result["title"]),
+                            self.escape_markdown(result["author"]),
                         )
                         + "\n"
                     )
                     if result.get("narrator"):
                         message += (
-                            get_text("search_narrated_by", language, result["narrator"])
+                            get_text(
+                                "search_narrated_by",
+                                language,
+                                self.escape_markdown(result["narrator"]),
+                            )
                             + "\n"
                         )
                     if result.get("series"):
@@ -434,7 +458,12 @@ class AudiobookTelegramBot:
                         if result.get("series_part"):
                             series_text += f" #{result['series_part']}"
                         message += (
-                            get_text("search_series", language, series_text) + "\n"
+                            get_text(
+                                "search_series",
+                                language,
+                                self.escape_markdown(series_text),
+                            )
+                            + "\n"
                         )
                     message += (
                         get_text("search_asin", language, result["asin"]) + "\n\n"
@@ -464,15 +493,17 @@ class AudiobookTelegramBot:
 
                 reply_markup = InlineKeyboardMarkup(keyboard)
 
-                await query.edit_message_text(
-                    message, reply_markup=reply_markup, parse_mode="Markdown"
+                await self.safe_send_markdown(
+                    query, message, reply_markup, edit_message=True
                 )
             else:
                 await query.edit_message_text(
                     get_text(
                         "error_generic",
                         language,
-                        data.get("message", get_text("error_unknown", language)),
+                        self.escape_markdown(
+                            data.get("message", get_text("error_unknown", language))
+                        ),
                     )
                 )
 
@@ -481,7 +512,7 @@ class AudiobookTelegramBot:
             error_details = traceback.format_exc()
             self.logger.error(f"Full traceback: {error_details}")
             await query.edit_message_text(
-                get_text("error_generic", language, str(e))
+                get_text("error_generic", language, self.escape_markdown(str(e)))
                 + "\n\n"
                 + get_text("error_debug_info", language, type(e).__name__)
             )
@@ -505,7 +536,12 @@ class AudiobookTelegramBot:
 
             message = get_text("custom_search_title", language, file_id) + "\n\n"
             message += (
-                get_text("custom_search_original", language, original_query) + "\n\n"
+                get_text(
+                    "custom_search_original",
+                    language,
+                    self.escape_markdown(original_query),
+                )
+                + "\n\n"
             )
             message += get_text("custom_search_instructions", language) + "\n"
             message += get_text("custom_search_examples", language) + "\n"
@@ -516,14 +552,14 @@ class AudiobookTelegramBot:
             message += get_text("custom_search_spelling", language) + "\n\n"
             message += get_text("custom_search_type_now", language)
 
-            await query.edit_message_text(message, parse_mode="Markdown")
+            await self.safe_send_markdown(query, message, edit_message=True)
 
         except Exception as e:
             self.logger.error(f"Error in custom search callback: {e}")
             error_details = traceback.format_exc()
             self.logger.error(f"Full traceback: {error_details}")
             await query.edit_message_text(
-                get_text("error_generic", language, str(e))
+                get_text("error_generic", language, self.escape_markdown(str(e)))
                 + "\n\n"
                 + get_text("error_debug_info", language, type(e).__name__)
             )
@@ -550,7 +586,11 @@ class AudiobookTelegramBot:
 
                 # Show processing message
                 await update.message.reply_text(
-                    get_text("custom_search_processing", language, search_query)
+                    get_text(
+                        "custom_search_processing",
+                        language,
+                        self.escape_markdown(search_query),
+                    )
                 )
 
                 # Make custom search request
@@ -564,22 +604,33 @@ class AudiobookTelegramBot:
                     results = data["results"]
 
                     if not results:
-                        await update.message.reply_text(
-                            get_text("custom_search_no_results", language, search_query)
+                        await self.safe_send_markdown(
+                            update.message,
+                            get_text(
+                                "custom_search_no_results",
+                                language,
+                                self.escape_markdown(search_query),
+                            )
                             + "\n\n"
                             + get_text("custom_search_try_different", language),
-                            parse_mode="Markdown",
                         )
                         return
 
                     # Create message with search results
                     message = (
                         get_text(
-                            "custom_search_results_title", language, data["filename"]
+                            "custom_search_results_title",
+                            language,
+                            self.escape_markdown(data["filename"]),
                         )
                         + "\n\n"
                     )
-                    message += get_text("search_query", language, search_query) + "\n\n"
+                    message += (
+                        get_text(
+                            "search_query", language, self.escape_markdown(search_query)
+                        )
+                        + "\n\n"
+                    )
 
                     for i, result in enumerate(results, 1):
                         message += (
@@ -587,15 +638,17 @@ class AudiobookTelegramBot:
                                 "search_result_entry",
                                 language,
                                 i,
-                                result["title"],
-                                result["author"],
+                                self.escape_markdown(result["title"]),
+                                self.escape_markdown(result["author"]),
                             )
                             + "\n"
                         )
                         if result.get("narrator"):
                             message += (
                                 get_text(
-                                    "search_narrated_by", language, result["narrator"]
+                                    "search_narrated_by",
+                                    language,
+                                    self.escape_markdown(result["narrator"]),
                                 )
                                 + "\n"
                             )
@@ -604,7 +657,12 @@ class AudiobookTelegramBot:
                             if result.get("series_part"):
                                 series_text += f" #{result['series_part']}"
                             message += (
-                                get_text("search_series", language, series_text) + "\n"
+                                get_text(
+                                    "search_series",
+                                    language,
+                                    self.escape_markdown(series_text),
+                                )
+                                + "\n"
                             )
                         message += (
                             get_text("search_asin", language, result["asin"]) + "\n\n"
@@ -634,15 +692,15 @@ class AudiobookTelegramBot:
 
                     reply_markup = InlineKeyboardMarkup(keyboard)
 
-                    await update.message.reply_text(
-                        message, reply_markup=reply_markup, parse_mode="Markdown"
-                    )
+                    await self.safe_send_markdown(update.message, message, reply_markup)
                 else:
                     await update.message.reply_text(
                         get_text(
                             "error_generic",
                             language,
-                            data.get("message", get_text("error_unknown", language)),
+                            self.escape_markdown(
+                                data.get("message", get_text("error_unknown", language))
+                            ),
                         )
                     )
 
@@ -651,7 +709,7 @@ class AudiobookTelegramBot:
                 error_details = traceback.format_exc()
                 self.logger.error(f"Full traceback: {error_details}")
                 await update.message.reply_text(
-                    get_text("error_generic", language, str(e))
+                    get_text("error_generic", language, self.escape_markdown(str(e)))
                     + "\n\n"
                     + get_text("error_debug_info", language, type(e).__name__)
                 )
@@ -666,15 +724,24 @@ class AudiobookTelegramBot:
             data = response.json()
 
             if data["status"] == "success":
-                message = get_text("skip_success", language, data["filename"]) + "\n"
-                message += get_text("skip_moved_to", language, data["moved_to"])
+                message = (
+                    get_text(
+                        "skip_success", language, self.escape_markdown(data["filename"])
+                    )
+                    + "\n"
+                )
+                message += get_text(
+                    "skip_moved_to", language, self.escape_markdown(data["moved_to"])
+                )
                 await query.edit_message_text(message)
             else:
                 await query.edit_message_text(
                     get_text(
                         "error_generic",
                         language,
-                        data.get("message", get_text("error_unknown", language)),
+                        self.escape_markdown(
+                            data.get("message", get_text("error_unknown", language))
+                        ),
                     )
                 )
 
@@ -683,7 +750,7 @@ class AudiobookTelegramBot:
             error_details = traceback.format_exc()
             self.logger.error(f"Full traceback: {error_details}")
             await query.edit_message_text(
-                get_text("error_generic", language, str(e))
+                get_text("error_generic", language, self.escape_markdown(str(e)))
                 + "\n\n"
                 + get_text("error_debug_info", language, type(e).__name__)
             )
@@ -706,15 +773,28 @@ class AudiobookTelegramBot:
             if data["status"] == "success":
                 # Build success message with metadata
                 message = (
-                    get_text("processing_success", language, data["filename"]) + "\n\n"
+                    get_text(
+                        "processing_success",
+                        language,
+                        self.escape_markdown(data["filename"]),
+                    )
+                    + "\n\n"
                 )
                 message += get_text("processing_metadata", language) + "\n"
                 message += (
-                    get_text("processing_title", language, data["metadata"]["title"])
+                    get_text(
+                        "processing_title",
+                        language,
+                        self.escape_markdown(data["metadata"]["title"]),
+                    )
                     + "\n"
                 )
                 message += (
-                    get_text("processing_author", language, data["metadata"]["author"])
+                    get_text(
+                        "processing_author",
+                        language,
+                        self.escape_markdown(data["metadata"]["author"]),
+                    )
                     + "\n"
                 )
 
@@ -723,7 +803,7 @@ class AudiobookTelegramBot:
                         get_text(
                             "processing_narrator",
                             language,
-                            data["metadata"]["narrator"],
+                            self.escape_markdown(data["metadata"]["narrator"]),
                         )
                         + "\n"
                     )
@@ -737,7 +817,12 @@ class AudiobookTelegramBot:
                             data["metadata"]["series_part"],
                         )
                     message += (
-                        get_text("processing_series", language, series_text) + "\n"
+                        get_text(
+                            "processing_series",
+                            language,
+                            self.escape_markdown(series_text),
+                        )
+                        + "\n"
                     )
                 else:
                     message += (
@@ -749,7 +834,11 @@ class AudiobookTelegramBot:
                         + "\n"
                     )
 
-                message += get_text("processing_moved_to", language, data["moved_to"])
+                message += get_text(
+                    "processing_moved_to",
+                    language,
+                    self.escape_markdown(data["moved_to"]),
+                )
 
                 await query.edit_message_text(message)
             else:
@@ -757,7 +846,9 @@ class AudiobookTelegramBot:
                     get_text(
                         "processing_error",
                         language,
-                        data.get("message", get_text("error_unknown", language)),
+                        self.escape_markdown(
+                            data.get("message", get_text("error_unknown", language))
+                        ),
                     )
                 )
 
@@ -766,7 +857,7 @@ class AudiobookTelegramBot:
             error_details = traceback.format_exc()
             self.logger.error(f"Full traceback: {error_details}")
             await query.edit_message_text(
-                get_text("error_generic", language, str(e))
+                get_text("error_generic", language, self.escape_markdown(str(e)))
                 + "\n\n"
                 + get_text("error_debug_info", language, type(e).__name__)
             )
@@ -791,7 +882,7 @@ class AudiobookTelegramBot:
             error_details = traceback.format_exc()
             self.logger.error(f"Full traceback: {error_details}")
             await query.edit_message_text(
-                get_text("error_generic", language, str(e))
+                get_text("error_generic", language, self.escape_markdown(str(e)))
                 + "\n\n"
                 + get_text("error_debug_info", language, type(e).__name__)
             )
@@ -814,7 +905,11 @@ class AudiobookTelegramBot:
                     get_text(
                         "auto_error",
                         language,
-                        init_data.get("message", get_text("error_unknown", language)),
+                        self.escape_markdown(
+                            init_data.get(
+                                "message", get_text("error_unknown", language)
+                            )
+                        ),
                     )
                 )
                 return
@@ -880,7 +975,7 @@ class AudiobookTelegramBot:
                                 get_text("auto_skipped_message", language) + "\n\n"
                             )
 
-                        await update.message.reply_text(message, parse_mode="Markdown")
+                        await self.safe_send_markdown(update.message, message)
                         break
                     else:
                         # Process current book result
@@ -908,9 +1003,7 @@ class AudiobookTelegramBot:
                             language,
                         )
 
-                        await update.message.reply_text(
-                            progress_message, parse_mode="Markdown"
-                        )
+                        await self.safe_send_markdown(update.message, progress_message)
 
                         # Move to next book
                         current_index += 1
@@ -919,7 +1012,9 @@ class AudiobookTelegramBot:
                         get_text(
                             "auto_error",
                             language,
-                            data.get("message", get_text("error_unknown", language)),
+                            self.escape_markdown(
+                                data.get("message", get_text("error_unknown", language))
+                            ),
                         )
                     )
                     break
@@ -929,7 +1024,7 @@ class AudiobookTelegramBot:
             error_details = traceback.format_exc()
             self.logger.error(f"Full traceback: {error_details}")
             await update.message.reply_text(
-                f"❌ Error during auto-processing: {str(e)}"
+                f"❌ Error during auto-processing: {self.escape_markdown(str(e))}"
             )
 
     def _build_progress_message(
@@ -946,41 +1041,12 @@ class AudiobookTelegramBot:
         filename = result.get("filename", "unknown")
         status = result.get("status", "unknown")
 
-        # Escape special characters for Markdown
-        def escape_markdown(text):
-            """Escape special characters for Telegram Markdown"""
-            if not text:
-                return text
-            # Escape characters that have special meaning in Markdown
-            text = (
-                str(text)
-                .replace("_", "\\_")
-                .replace("*", "\\*")
-                .replace("[", "\\[")
-                .replace("]", "\\]")
-                .replace("(", "\\(")
-                .replace(")", "\\)")
-                .replace("~", "\\~")
-                .replace("`", "\\`")
-                .replace(">", "\\>")
-                .replace("#", "\\#")
-                .replace("+", "\\+")
-                .replace("-", "\\-")
-                .replace("=", "\\=")
-                .replace("|", "\\|")
-                .replace("{", "\\{")
-                .replace("}", "\\}")
-                .replace(".", "\\.")
-                .replace("!", "\\!")
-            )
-            return text
-
         # Build progress header
         message = (
             get_text("auto_progress_book", language, current_index + 1, total) + "\n"
         )
         message += (
-            get_text("auto_progress_filename", language, escape_markdown(filename))
+            get_text("auto_progress_filename", language, self.escape_markdown(filename))
             + "\n\n"
         )
 
@@ -989,13 +1055,14 @@ class AudiobookTelegramBot:
             asin = result.get("asin", "unknown")
             message += get_text("auto_progress_success", language) + "\n"
             message += (
-                get_text("auto_progress_asin", language, escape_markdown(asin)) + "\n"
+                get_text("auto_progress_asin", language, self.escape_markdown(asin))
+                + "\n"
             )
         elif status == "failed":
             reason = result.get("reason", "Unknown error")
             message += get_text("auto_progress_failed", language) + "\n"
             message += (
-                get_text("auto_progress_reason", language, escape_markdown(reason))
+                get_text("auto_progress_reason", language, self.escape_markdown(reason))
                 + "\n"
             )
         elif status == "skipped":
@@ -1003,7 +1070,9 @@ class AudiobookTelegramBot:
             message += get_text("auto_progress_skipped", language) + "\n"
             message += (
                 get_text(
-                    "auto_progress_skipped_reason", language, escape_markdown(reason)
+                    "auto_progress_skipped_reason",
+                    language,
+                    self.escape_markdown(reason),
                 )
                 + "\n"
             )
@@ -1021,6 +1090,78 @@ class AudiobookTelegramBot:
         )
 
         return message
+
+    def escape_markdown(self, text):
+        """Escape special characters for Telegram Markdown v2"""
+        if not text:
+            return text
+
+        # Convert to string and escape all special characters
+        text = str(text)
+
+        # Characters that need to be escaped in Telegram Markdown v2
+        special_chars = [
+            "_",
+            "*",
+            "[",
+            "]",
+            "(",
+            ")",
+            "~",
+            "`",
+            ">",
+            "#",
+            "+",
+            "-",
+            "=",
+            "|",
+            "{",
+            "}",
+            ".",
+            "!",
+        ]
+
+        for char in special_chars:
+            text = text.replace(char, f"\\{char}")
+
+        return text
+
+    async def safe_send_markdown(
+        self, update_or_query, text, reply_markup=None, edit_message=False
+    ):
+        """Safely send a message with Markdown formatting, falling back to plain text if parsing fails"""
+        try:
+            # Try to send with Markdown first
+            if edit_message:
+                await update_or_query.edit_message_text(
+                    text, reply_markup=reply_markup, parse_mode="Markdown"
+                )
+            else:
+                await update_or_query.reply_text(
+                    text, reply_markup=reply_markup, parse_mode="Markdown"
+                )
+        except Exception as e:
+            # If Markdown parsing fails, send as plain text
+            self.logger.warning(
+                f"Markdown parsing failed, falling back to plain text: {e}"
+            )
+            try:
+                if edit_message:
+                    await update_or_query.edit_message_text(
+                        text, reply_markup=reply_markup
+                    )
+                else:
+                    await update_or_query.reply_text(text, reply_markup=reply_markup)
+            except Exception as fallback_error:
+                self.logger.error(
+                    f"Failed to send message even as plain text: {fallback_error}"
+                )
+                # Last resort: send a simple error message
+                error_msg = "Message could not be displayed due to formatting issues."
+                if edit_message:
+                    await update_or_query.edit_message_text(error_msg)
+                else:
+                    await update_or_query.reply_text(error_msg)
 
     def run(self):
         """Run the Telegram bot"""
