@@ -347,8 +347,8 @@ class AudiobookTelegramBot:
         supported_languages = get_supported_languages()
 
         # Create message with current language and available options
-        message = f"🌍 **Current Language**: {current_language.upper()}\n\n"
-        message += "**Available Languages:**\n"
+        message = f"🌍 Current Language: {current_language.upper()}\n\n"
+        message += "Available Languages:\n"
 
         # Create inline keyboard for language selection
         keyboard = []

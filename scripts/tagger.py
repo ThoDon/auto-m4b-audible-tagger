@@ -212,11 +212,42 @@ class AudibleTagger:
             # Create OPF file (Open Packaging Format)
             opf_content = self.create_opf_content(metadata)
             if opf_content:
-                # Use the same name as the .m4b file but with .opf extension
-                if file_path:
-                    m4b_name = file_path.stem  # Get filename without extension
+                # Use the new processed filename for the .opf file
+                # Get the .m4b file in the destination directory
+                m4b_files = list(dest_dir.glob("*.m4b"))
+                if m4b_files:
+                    # Use the first .m4b file found (should be the processed one)
+                    m4b_name = m4b_files[0].stem  # Get filename without extension
                 else:
-                    m4b_name = metadata.get("asin", "book")  # Fallback to ASIN
+                    # Fallback: construct the filename from metadata
+                    title = metadata.get("title", "Unknown Title")
+                    series = metadata.get("series", "")
+                    series_part = metadata.get("series_part", "")
+
+                    # Clean the title for filename
+                    def clean_filename(name: str) -> str:
+                        if not name:
+                            return "Unknown"
+                        cleaned = re.sub(r'[<>:"/\\|?*]', "_", name)
+                        cleaned = cleaned.encode("utf-8", errors="replace").decode(
+                            "utf-8"
+                        )
+                        cleaned = cleaned.strip(" .")
+                        return cleaned if cleaned else "Unknown"
+
+                    title_clean = clean_filename(title)
+
+                    # Build filename similar to how it's done in move_to_library
+                    if self.config.get("include_series_in_filename", True):
+                        if series_part and series:
+                            m4b_name = f"{title_clean} ({clean_filename(series)} #{series_part})"
+                        elif series:
+                            m4b_name = f"{title_clean} ({clean_filename(series)})"
+                        else:
+                            m4b_name = title_clean
+                    else:
+                        m4b_name = title_clean
+
                 opf_file = dest_dir / f"{m4b_name}.opf"
                 with open(opf_file, "w", encoding="utf-8") as f:
                     f.write(opf_content)
