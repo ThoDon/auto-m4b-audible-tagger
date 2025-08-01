@@ -199,79 +199,38 @@ class AudiobookTelegramBot:
                 audiobooks = data["audiobooks"]
                 total_books = data["count"]
 
-                # Check if we need to split into multiple messages
-                # Telegram limit is 4096 characters, let's use 3500 to be safe
-                MAX_MESSAGE_LENGTH = 3500
+                # Send header message
+                header_message = get_text("list_found_books", language, total_books)
+                await update.message.reply_text(header_message)
 
-                # Create header message
-                header_message = (
-                    get_text("list_found_books", language, total_books) + "\n\n"
-                )
-
-                # Split books into chunks
-                current_message = header_message
-                message_count = 1
-                messages = []
-
+                # Send each book as a separate message with individual action buttons
                 for i, book in enumerate(audiobooks, 1):
-                    book_entry = (
-                        get_text(
-                            "list_book_entry",
-                            language,
-                            i,
-                            book["parsed_title"],
-                            book["parsed_author"],
-                        )
-                        + "\n"
-                        + get_text(
-                            "list_file_info",
-                            language,
-                            book["filename"],
-                        )
-                        + "\n"
-                        + get_text("list_id_info", language, book["id"])
-                        + "\n\n"
+                    # Create book message (simplified - no path, no ID, no index)
+                    book_message = get_text(
+                        "list_book_entry",
+                        language,
+                        book["parsed_title"],
+                        book["parsed_author"],
                     )
 
-                    # Check if adding this book would exceed the limit
-                    if len(current_message + book_entry) > MAX_MESSAGE_LENGTH:
-                        # Store current message
-                        messages.append(current_message.strip())
+                    # Create individual keyboard for this book with emoji-only buttons
+                    keyboard = [
+                        [
+                            InlineKeyboardButton(
+                                "🔍",  # Magnifying glass emoji
+                                callback_data=f"search:{book['id']}",
+                            ),
+                            InlineKeyboardButton(
+                                "⏭️",  # Skip arrows emoji
+                                callback_data=f"skip:{book['id']}",
+                            ),
+                        ]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
 
-                        # Start new message
-                        current_message = f"📚 {get_text('list_continued', language, message_count + 1)}\n\n"
-                        message_count += 1
-
-                    current_message += book_entry
-
-                # Add the last message
-                if current_message.strip():
-                    messages.append(current_message.strip())
-
-                # Send all messages
-                for i, msg in enumerate(messages):
-                    if i == len(messages) - 1:
-                        # Last message gets the keyboard with all books
-                        keyboard = []
-                        for j, book in enumerate(audiobooks):
-                            keyboard.append(
-                                [
-                                    InlineKeyboardButton(
-                                        get_text("button_search", language, j + 1),
-                                        callback_data=f"search:{book['id']}",
-                                    ),
-                                    InlineKeyboardButton(
-                                        get_text("button_skip", language, j + 1),
-                                        callback_data=f"skip:{book['id']}",
-                                    ),
-                                ]
-                            )
-
-                        reply_markup = InlineKeyboardMarkup(keyboard)
-                        await update.message.reply_text(msg, reply_markup=reply_markup)
-                    else:
-                        # Other messages without keyboard
-                        await update.message.reply_text(msg)
+                    await update.message.reply_text(
+                        book_message, reply_markup=reply_markup
+                    )
 
             else:
                 await update.message.reply_text(

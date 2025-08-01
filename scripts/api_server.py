@@ -201,11 +201,7 @@ class AudiobookAPI:
                         books_info.append(
                             {
                                 "id": audiobook["file_id"],
-                                "filename": str(
-                                    relative_path
-                                ),  # Include subfolder path
-                                "path": str(file_path),
-                                "size": audiobook["file_size"],
+                                "filename": file_path.name,  # Just the filename, not the path
                                 "status": audiobook["status"],
                                 "parsed_title": title,
                                 "parsed_author": author,
@@ -214,8 +210,6 @@ class AudiobookAPI:
                                     if author == "Unknown Author"
                                     else f"{title} {author}"
                                 ),
-                                "created_at": audiobook["created_at"],
-                                "processed_at": audiobook["processed_at"],
                             }
                         )
 
