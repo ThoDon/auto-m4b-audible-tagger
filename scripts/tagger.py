@@ -115,6 +115,7 @@ class AudibleTagger:
             "add_single_genre_only": False,
             "genre_delimiter": "/",
             "auto_tag_enabled": False,  # New: Enable auto-tagging
+            "make_backup": True,  # New: Enable backup creation
         }
 
         try:
@@ -822,13 +823,18 @@ class AudibleTagger:
                 self.logger.error(f"File is not writable: {file_path}")
                 return False
 
-            # Create a backup before tagging
-            backup_path = file_path.with_suffix(".m4b.backup")
-            try:
-                shutil.copy2(file_path, backup_path)
-                # Remove backup creation logging
-            except Exception as e:
-                self.logger.warning(f"Could not create backup: {e}")
+            # Create a backup before tagging (if enabled in config)
+            backup_path = None
+            if self.config.get("make_backup", True):
+                backup_path = file_path.with_suffix(".m4b.backup")
+                try:
+                    shutil.copy2(file_path, backup_path)
+                    # Remove backup creation logging
+                except Exception as e:
+                    self.logger.warning(f"Could not create backup: {e}")
+                    backup_path = None
+            else:
+                self.logger.info(f"Backup creation disabled for: {file_path.name}")
 
             # Tag with mutagen
             success = self.tag_with_mutagen(file_path, metadata, cover_path)

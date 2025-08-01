@@ -6,5 +6,6 @@
   "exclude_translators": true,
   "output_single_author": true,
   "log_level": "WARNING",
-  "auto_tag_enabled": false
+  "auto_tag_enabled": false,
+  "make_backup": false
 }
