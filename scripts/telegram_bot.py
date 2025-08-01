@@ -946,25 +946,67 @@ class AudiobookTelegramBot:
         filename = result.get("filename", "unknown")
         status = result.get("status", "unknown")
 
+        # Escape special characters for Markdown
+        def escape_markdown(text):
+            """Escape special characters for Telegram Markdown"""
+            if not text:
+                return text
+            # Escape characters that have special meaning in Markdown
+            text = (
+                str(text)
+                .replace("_", "\\_")
+                .replace("*", "\\*")
+                .replace("[", "\\[")
+                .replace("]", "\\]")
+                .replace("(", "\\(")
+                .replace(")", "\\)")
+                .replace("~", "\\~")
+                .replace("`", "\\`")
+                .replace(">", "\\>")
+                .replace("#", "\\#")
+                .replace("+", "\\+")
+                .replace("-", "\\-")
+                .replace("=", "\\=")
+                .replace("|", "\\|")
+                .replace("{", "\\{")
+                .replace("}", "\\}")
+                .replace(".", "\\.")
+                .replace("!", "\\!")
+            )
+            return text
+
         # Build progress header
         message = (
             get_text("auto_progress_book", language, current_index + 1, total) + "\n"
         )
-        message += get_text("auto_progress_filename", language, filename) + "\n\n"
+        message += (
+            get_text("auto_progress_filename", language, escape_markdown(filename))
+            + "\n\n"
+        )
 
         # Add status-specific message
         if status == "processed":
             asin = result.get("asin", "unknown")
             message += get_text("auto_progress_success", language) + "\n"
-            message += get_text("auto_progress_asin", language, asin) + "\n"
+            message += (
+                get_text("auto_progress_asin", language, escape_markdown(asin)) + "\n"
+            )
         elif status == "failed":
             reason = result.get("reason", "Unknown error")
             message += get_text("auto_progress_failed", language) + "\n"
-            message += get_text("auto_progress_reason", language, reason) + "\n"
+            message += (
+                get_text("auto_progress_reason", language, escape_markdown(reason))
+                + "\n"
+            )
         elif status == "skipped":
             reason = result.get("reason", "Unknown reason")
             message += get_text("auto_progress_skipped", language) + "\n"
-            message += get_text("auto_progress_skipped_reason", language, reason) + "\n"
+            message += (
+                get_text(
+                    "auto_progress_skipped_reason", language, escape_markdown(reason)
+                )
+                + "\n"
+            )
 
         # Add progress summary
         message += f"\n{get_text('auto_progress_summary', language)}\n"
