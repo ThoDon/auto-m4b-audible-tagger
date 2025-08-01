@@ -4,7 +4,7 @@
   "include_series_in_filename": true,
   "create_additional_metadata": true,
   "exclude_translators": true,
-  "output_single_author": false,
+  "output_single_author": true,
   "log_level": "WARNING",
   "auto_tag_enabled": false
 }
