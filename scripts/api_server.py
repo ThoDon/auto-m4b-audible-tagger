@@ -7,6 +7,7 @@ Provides API endpoints for automation and integration
 import logging
 import traceback
 import json
+import os
 from pathlib import Path
 from typing import List, Optional
 from flask import Flask, request, jsonify
@@ -43,8 +44,9 @@ class AudiobookAPI:
         # Register routes
         self.register_routes()
 
-        # Run initial cleanup
-        self.run_cleanup()
+        # Run initial cleanup (can be disabled for faster startup)
+        if os.getenv("SKIP_INITIAL_CLEANUP", "false").lower() != "true":
+            self.run_cleanup()
 
     def setup_logging(self):
         """Setup logging for API server"""
