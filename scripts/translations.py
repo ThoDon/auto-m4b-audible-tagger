@@ -16,6 +16,7 @@ TRANSLATIONS = {
         # List command
         "list_no_books": "📚 No pending audiobooks found.",
         "list_found_books": "📚 Found {} pending audiobook(s):",
+        "list_continued": "📚 Audiobooks (continued - part {})",
         "list_book_entry": "{}. **{}** by {}",
         "list_file_info": "   📁 `{}`",
         "list_id_info": "   🆔 ID: `{}`",
@@ -126,6 +127,7 @@ TRANSLATIONS = {
         # List command
         "list_no_books": "📚 Aucun audiobook en attente trouvé.",
         "list_found_books": "📚 {} audiobook(s) en attente trouvé(s) :",
+        "list_continued": "📚 Audiobooks (suite - partie {})",
         "list_book_entry": "{}. **{}** par {}",
         "list_file_info": "   📁 `{}`",
         "list_id_info": "   🆔 ID : `{}`",
@@ -236,6 +238,7 @@ TRANSLATIONS = {
         # List command
         "list_no_books": "📚 No se encontraron audiolibros pendientes.",
         "list_found_books": "📚 Se encontraron {} audiolibro(s) pendiente(s):",
+        "list_continued": "📚 Audiolibros (continuación - parte {})",
         "list_book_entry": "{}. **{}** por {}",
         "list_file_info": "   📁 `{}`",
         "list_id_info": "   🆔 ID: `{}`",
@@ -346,6 +349,7 @@ TRANSLATIONS = {
         # List command
         "list_no_books": "📚 Nessun audiolibro in attesa trovato.",
         "list_found_books": "📚 Trovati {} audiolibro/i in attesa:",
+        "list_continued": "📚 Audiolibri (continuazione - parte {})",
         "list_book_entry": "{}. **{}** di {}",
         "list_file_info": "   📁 `{}`",
         "list_id_info": "   🆔 ID: `{}`",
@@ -456,6 +460,7 @@ TRANSLATIONS = {
         # List command
         "list_no_books": "📚 Keine ausstehenden Hörbücher gefunden.",
         "list_found_books": "📚 {} ausstehende(s) Hörbuch(e) gefunden:",
+        "list_continued": "📚 Hörbücher (Fortsetzung - Teil {})",
         "list_book_entry": "{}. **{}** von {}",
         "list_file_info": "   📁 `{}`",
         "list_id_info": "   🆔 ID: `{}`",
