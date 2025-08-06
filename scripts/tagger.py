@@ -287,10 +287,16 @@ class AudibleTagger:
                     publish_year = metadata["release_date"][:4]
                 except:
                     pass
+            
+            # Ensure we have a proper volume number for series
+            volume_number = metadata.get("series_part", "")
+            if volume_number and volume_number.isdigit():
+                volume_number = str(int(volume_number))  # Remove leading zeros
 
             # Create genres list
             genres = metadata.get("genres", [])
-            genres_text = ", ".join(genres) if genres else ""
+            delimiter = self.config.get("genre_delimiter", "/")
+            genres_text = delimiter.join(genres) if genres else ""
 
             # Create OPF content with conditional fields
             opf_content = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -331,6 +337,10 @@ class AudibleTagger:
 
             opf_content += f'\n        <dc:identifier opf:scheme="ASIN">{metadata.get("asin", "")}</dc:identifier>'
 
+            # Add ISBN if available
+            if isbn:
+                opf_content += f'\n        <dc:identifier opf:scheme="ISBN">{escape(isbn)}</dc:identifier>'
+
             # Add narrator if available
             if narrator:
                 opf_content += f'\n        <dc:contributor role="nrt">{escape(narrator)}</dc:contributor>'
@@ -338,10 +348,17 @@ class AudibleTagger:
             # Add series information if available
             if series:
                 opf_content += f'\n        <dc:subject opf:authority="series">{escape(series)}</dc:subject>'
-                if series_part:
+                if volume_number:
                     opf_content += (
-                        f'\n        <meta property="series-part">{series_part}</meta>'
+                        f'\n        <meta property="series-part">{volume_number}</meta>'
                     )
+
+            # Add additional metadata for Audiobookshelf compatibility
+            if metadata.get("runtime_length_min"):
+                opf_content += f'\n        <meta property="duration">{metadata["runtime_length_min"]}</meta>'
+            
+            if metadata.get("rating"):
+                opf_content += f'\n        <meta property="rating">{escape(metadata["rating"])}</meta>'
 
             # Close OPF content
             opf_content += """\n    </metadata>
@@ -765,6 +782,8 @@ class AudibleTagger:
             if "product_extended_attrs" in product:
                 ext_attrs = product["product_extended_attrs"]
                 details["copyright"] = ext_attrs.get("copyright", "")
+                # Try to extract ISBN from various possible fields
+                details["isbn"] = ext_attrs.get("isbn", "") or ext_attrs.get("isbn13", "") or ext_attrs.get("isbn10", "")
 
             return details
 
@@ -1386,8 +1405,9 @@ class AudibleTagger:
                 f"{Fore.YELLOW}Release Date:{Style.RESET_ALL} {metadata['release_date']}"
             )
         if metadata.get("genres"):
+            delimiter = self.config.get("genre_delimiter", "/")
             print(
-                f"{Fore.YELLOW}Genres:{Style.RESET_ALL} {', '.join(metadata['genres'])}"
+                f"{Fore.YELLOW}Genres:{Style.RESET_ALL} {delimiter.join(metadata['genres'])}"
             )
         if metadata.get("description"):
             print(
