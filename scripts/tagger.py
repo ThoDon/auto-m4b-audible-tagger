@@ -295,8 +295,6 @@ class AudibleTagger:
 
             # Create genres list
             genres = metadata.get("genres", [])
-            delimiter = self.config.get("genre_delimiter", "/")
-            genres_text = delimiter.join(genres) if genres else ""
 
             # Create OPF content with conditional fields
             opf_content = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -323,10 +321,10 @@ class AudibleTagger:
             else:
                 opf_content += "\n        <dc:description></dc:description>"
 
-            if genres_text:
-                opf_content += (
-                    f"\n        <dc:subject>{escape(genres_text)}</dc:subject>"
-                )
+            # Add individual genre tags
+            if genres:
+                for genre in genres:
+                    opf_content += f"\n        <dc:subject>{escape(genre)}</dc:subject>"
             else:
                 opf_content += "\n        <dc:subject></dc:subject>"
 
@@ -1070,10 +1068,10 @@ class AudibleTagger:
 
             else:
                 # Multiple genres with delimiter
-                delimiter = self.config.get("genre_delimiter", "/")
+                delimiter = self.config.get("genre_delimiter", ";")
                 tags[TagConstants.GENRE] = delimiter.join(
                     metadata["genres"]
-                )  # GENRE (Genre1/Genre2)
+                )  # GENRE (Genre1;Genre2)
 
         return tags
 
